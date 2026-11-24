@@ -1,0 +1,403 @@
+{
+  "step_id": "00",
+  "created_at": "2026-11-24T09:11:01.940179+00:00",
+  "host": "t-20261102113255-f7vhv-worker-0",
+  "self_commit": null,
+  "self_commit_note": "This manifest is written before the SpecMaster and Open-AgentRL commits that contain it. Those commit ids belong in the untracked handoff.json, not here.",
+  "components": {
+    "specmaster": {
+      "path": "/fs_mol/cxq/SpecMaster_jp",
+      "role": "data preparation, evaluation wrappers, API launch, and this baseline",
+      "git": {
+        "existed_before_step": false,
+        "branch": "main",
+        "commit": null
+      }
+    },
+    "open_agentrl": {
+      "path": "/fs_mol/cxq/Xmaster_AgentRL/Open-AgentRL",
+      "role": "NMR matching agent, tools, and router",
+      "git": {
+        "base_commit": "3aca69b3b4cb8f9467d8ebf607c9355bd9f26262",
+        "branch_for_this_step": "rsi/prep-20261124",
+        "prep_commit": null,
+        "upstream_remote": "https://github.com/Gen-Verse/Open-AgentRL.git",
+        "push_policy": "do not push this branch to the upstream remote"
+      }
+    },
+    "llamafactory": {
+      "path": "/fs_mol/cxq/Xmaster_AgentRL/repair_sft/LLaMA-Factory",
+      "role": "SFT framework, v6.4 config, and checkpoint-63",
+      "git": {
+        "head": "cabe59a343c89e343dd731798ea21f6fdf9989ca",
+        "upstream_remote": "https://github.com/hiyouga/LLaMA-Factory.git",
+        "committed_by_this_step": false,
+        "worktree_preserved": true
+      }
+    }
+  },
+  "core_matching_sources": [
+    {
+      "path": "/fs_mol/cxq/Xmaster_AgentRL/Open-AgentRL/recipe/nmr_matching_agent/nmr_matching_runtime.py",
+      "role": "deterministic matching tool runtime",
+      "size_bytes": 23041,
+      "mtime_utc": "2026-10-26T08:38:15.293840+00:00",
+      "hash_method": "sha256",
+      "sha256": "0e84f2a98073345b11201e2eb8bd4b239196457ed60547b61a82e1fd244e19dd"
+    },
+    {
+      "path": "/fs_mol/cxq/Xmaster_AgentRL/Open-AgentRL/recipe/nmr_matching_agent/rule_based_router.py",
+      "role": "high-confidence rule router",
+      "size_bytes": 36504,
+      "mtime_utc": "2026-10-26T07:42:41.842264+00:00",
+      "hash_method": "sha256",
+      "sha256": "aa5c2cbbbd68e3b059c17f0418e5cacdd4d816f3ba6ad216916609e3baa3effb"
+    },
+    {
+      "path": "/fs_mol/cxq/Xmaster_AgentRL/Open-AgentRL/recipe/nmr_matching_agent/evidence_reconstruction.py",
+      "role": "final evidence reconstruction",
+      "size_bytes": 17258,
+      "mtime_utc": "2026-10-20T05:10:12.509916+00:00",
+      "hash_method": "sha256",
+      "sha256": "947681c41c6c80412636216195374d5b23ca26a7c01d97592054d0b619b6d84c"
+    },
+    {
+      "path": "/fs_mol/cxq/Xmaster_AgentRL/Open-AgentRL/recipe/nmr_matching_agent/prompt.py",
+      "role": "agent prompt text, unchanged in this step",
+      "size_bytes": 5708,
+      "mtime_utc": "2026-10-26T06:21:22.839296+00:00",
+      "hash_method": "sha256",
+      "sha256": "3fa08646837d40d1ee0f33710e2cefbfbcf06a2346a138f49bdb432d1348a05b"
+    },
+    {
+      "path": "/fs_mol/cxq/Xmaster_AgentRL/Open-AgentRL/recipe/nmr_matching_agent/router_config.json",
+      "role": "router thresholds and template settings",
+      "size_bytes": 1295,
+      "mtime_utc": "2026-10-26T06:20:18.266985+00:00",
+      "hash_method": "sha256",
+      "sha256": "3b8951d0c767ad587c31e6897caee86189758f9e7ca12cb443da632bcf20cfe4"
+    },
+    {
+      "path": "/fs_mol/cxq/Xmaster_AgentRL/Open-AgentRL/recipe/nmr_matching_agent/tool_config_matching.yaml",
+      "role": "tool schemas and scoring config",
+      "size_bytes": 4782,
+      "mtime_utc": "2026-10-14T14:50:02.216262+00:00",
+      "hash_method": "sha256",
+      "sha256": "a0bf943118dc9d5bc14aa6ad52bda17c0cc756554b008621cb941e9b6a1c78a1"
+    },
+    {
+      "path": "/fs_mol/cxq/Xmaster_AgentRL/Open-AgentRL/recipe/nmr_matching_agent/api_service.py",
+      "role": "HTTP matching service",
+      "size_bytes": 9926,
+      "mtime_utc": "2026-10-20T05:12:36.201906+00:00",
+      "hash_method": "sha256",
+      "sha256": "ee5f6ce926d3312280356e7710a05c96479aae334200959fcb8b33b144e42bac"
+    },
+    {
+      "path": "/fs_mol/cxq/Xmaster_AgentRL/Open-AgentRL/recipe/nmr_matching_agent/standalone_infer_matching.py",
+      "role": "single-GPU agent inference",
+      "size_bytes": 31322,
+      "mtime_utc": "2026-10-26T07:39:03.376287+00:00",
+      "hash_method": "sha256",
+      "sha256": "e1aae4fcbf96dd77bb1717dfd56ba01cc03cc15c4f80a8dd47fc986a7e76715a"
+    },
+    {
+      "path": "/fs_mol/cxq/Xmaster_AgentRL/Open-AgentRL/recipe/nmr_matching_agent/reward_matching_agent.py",
+      "role": "matching reward",
+      "size_bytes": 6033,
+      "mtime_utc": "2026-10-14T14:50:09.178484+00:00",
+      "hash_method": "sha256",
+      "sha256": "b65d28aa0a06ec4cbc4d26a3577ba11794b36836238bef52cb8a846dd353fc4a"
+    },
+    {
+      "path": "/fs_mol/cxq/Xmaster_AgentRL/Open-AgentRL/verl/tools/nmr_matching_tools.py",
+      "role": "verl tool wrapper",
+      "size_bytes": 11294,
+      "mtime_utc": "2026-09-30T06:36:47.818408+00:00",
+      "hash_method": "sha256",
+      "sha256": "a0bc9d62a9123ce8552ffdb0f52185a4fd4f35a56e1271ce8a77ae2552b0be1b"
+    },
+    {
+      "path": "/fs_mol/cxq/SpecMaster_jp/perturbation_generator/spectral_scorer.py",
+      "role": "spectral similarity scorer",
+      "size_bytes": 4811,
+      "mtime_utc": "2026-10-20T03:35:01.245120+00:00",
+      "hash_method": "sha256",
+      "sha256": "89e55c3dbf84f9fdf7db4662016632df23d844b0da417cbb102bd7c9353c84ff"
+    },
+    {
+      "path": "/fs_mol/cxq/SpecMaster_jp/perturbation_generator/nmr_predictor.py",
+      "role": "NMR prediction client",
+      "size_bytes": 10851,
+      "mtime_utc": "2026-09-27T06:19:45.002510+00:00",
+      "hash_method": "sha256",
+      "sha256": "7275459b2f92256040476f0e0adf6118d5357027018a6d702083300c20117e77"
+    },
+    {
+      "path": "/fs_mol/cxq/SpecMaster_jp/scripts/run_nmr_matching_api.sh",
+      "role": "current API launch script",
+      "size_bytes": 1179,
+      "mtime_utc": "2026-09-30T06:25:32.723653+00:00",
+      "hash_method": "sha256",
+      "sha256": "1148bfa3f14fe77608b0c003fa55ba3296657bd577d01e8c6c73a61334a40684"
+    },
+    {
+      "path": "/fs_mol/cxq/SpecMaster_jp/scripts/prepare_v6_4_sft_data.py",
+      "role": "v6.4 SFT split and conversion",
+      "size_bytes": 9558,
+      "mtime_utc": "2026-09-29T10:18:26.369517+00:00",
+      "hash_method": "sha256",
+      "sha256": "7835e0e370a8b4e2307603873bf8c2f34bb1d74610b73f1935a4b0bdff232083"
+    },
+    {
+      "path": "/fs_mol/cxq/SpecMaster_jp/configs/llamafactory/qwen3_32b_nmr_matching_tool_v6_4.yaml",
+      "role": "traceable copy of the v6.4 training yaml",
+      "size_bytes": 991,
+      "mtime_utc": "2026-11-24T09:10:12.834295+00:00",
+      "hash_method": "sha256",
+      "sha256": "f510cdc7d9bf1a462b4bc03a7f558cb3b9d15af942dcea55fc93e10173a2cec4"
+    },
+    {
+      "path": "/fs_mol/cxq/SpecMaster_jp/configs/llamafactory/dataset_info_nmr_v6_4.json",
+      "role": "v6.4 dataset registration extract",
+      "size_bytes": 415,
+      "mtime_utc": "2026-11-24T09:10:12.839011+00:00",
+      "hash_method": "sha256",
+      "sha256": "bf48f01cccaddbadbb799be5ca3e72d85ce1111e9f21d87cb54789173100d404"
+    }
+  ],
+  "credential_loading_sources": [
+    {
+      "path": "/fs_mol/cxq/SpecMaster_jp/gateway_credentials.py",
+      "role": "reads NMR_GATEWAY_API_KEY; no embedded key",
+      "size_bytes": 741,
+      "mtime_utc": "2026-11-24T09:08:47.232723+00:00",
+      "hash_method": "sha256",
+      "sha256": "281f5c89c54576ae69ff951e8a7039018cf9a794c62dbf04ac1557b7658c03a9"
+    },
+    {
+      "path": "/fs_mol/cxq/SpecMaster_jp/scripts/evaluate_testset_api.py",
+      "role": "reads NMR_GATEWAY_API_KEY; no embedded key",
+      "size_bytes": 7396,
+      "mtime_utc": "2026-11-24T09:09:30.378869+00:00",
+      "hash_method": "sha256",
+      "sha256": "229a1ac80afb9da1287ab2a13dacc9b451943aba10d67b1b95d00ff660d3ba5f"
+    },
+    {
+      "path": "/fs_mol/cxq/SpecMaster_jp/scripts/evaluate_rerank_fairnmr500_api.py",
+      "role": "reads NMR_GATEWAY_API_KEY; no embedded key",
+      "size_bytes": 9550,
+      "mtime_utc": "2026-11-24T09:09:46.589939+00:00",
+      "hash_method": "sha256",
+      "sha256": "f85b7d2a2b126fd11a19327e2a4c2b9d020547a8c79c626ee4edc16e9cdfabc8"
+    },
+    {
+      "path": "/fs_mol/cxq/SpecMaster_jp/scripts/evaluate_real_task.py",
+      "role": "reads NMR_GATEWAY_API_KEY; no embedded key",
+      "size_bytes": 7843,
+      "mtime_utc": "2026-11-24T09:09:46.581857+00:00",
+      "hash_method": "sha256",
+      "sha256": "8c21ddd98b4a43af530616b8051d44ae3582033d835069c462c091f91eb33725"
+    },
+    {
+      "path": "/fs_mol/cxq/SpecMaster_jp/scripts/distill_teacher_cot.py",
+      "role": "reads NMR_GATEWAY_API_KEY; no embedded key",
+      "size_bytes": 11927,
+      "mtime_utc": "2026-11-24T09:09:30.393246+00:00",
+      "hash_method": "sha256",
+      "sha256": "3987f34143c620f57593a9a2cc837bd27f861d61c41689791fb9d864fe56384a"
+    },
+    {
+      "path": "/fs_mol/cxq/SpecMaster_jp/scripts/evaluate_baselines.py",
+      "role": "reads NMR_GATEWAY_API_KEY; no embedded key",
+      "size_bytes": 9008,
+      "mtime_utc": "2026-11-24T09:09:46.906802+00:00",
+      "hash_method": "sha256",
+      "sha256": "bb1eeb0407a6a827772cb9277568a9c90f3a1402528321bfe254d462ba1fbfb0"
+    },
+    {
+      "path": "/fs_mol/cxq/SpecMaster_jp/perturbation_generator/generate_cot.py",
+      "role": "reads NMR_GATEWAY_API_KEY; no embedded key",
+      "size_bytes": 45042,
+      "mtime_utc": "2026-11-24T09:09:46.908349+00:00",
+      "hash_method": "sha256",
+      "sha256": "e1199e31a6fdadc1d4d0627ff434d918d3457c4b3a2733f5a86cada4609e942f"
+    }
+  ],
+  "checkpoint_63": {
+    "path": "/fs_mol/cxq/Xmaster_AgentRL/repair_sft/LLaMA-Factory/saves/qwen3-32b-nmr-matching-tool/full-v6_4/checkpoint-63",
+    "role": "v6.4 full SFT weights used by the current API",
+    "hashed_sidecars": [
+      {
+        "path": "/fs_mol/cxq/Xmaster_AgentRL/repair_sft/LLaMA-Factory/saves/qwen3-32b-nmr-matching-tool/full-v6_4/checkpoint-63/chat_template.jinja",
+        "role": "checkpoint sidecar",
+        "size_bytes": 4168,
+        "mtime_utc": "2026-09-29T14:53:05.452206+00:00",
+        "hash_method": "sha256",
+        "sha256": "a55ee1b1660128b7098723e0abcd92caa0788061051c62d51cbe87d9cf1974d8"
+      },
+      {
+        "path": "/fs_mol/cxq/Xmaster_AgentRL/repair_sft/LLaMA-Factory/saves/qwen3-32b-nmr-matching-tool/full-v6_4/checkpoint-63/config.json",
+        "role": "checkpoint sidecar",
+        "size_bytes": 2211,
+        "mtime_utc": "2026-09-29T14:52:04.294858+00:00",
+        "hash_method": "sha256",
+        "sha256": "a1d311f096e2a7df83985874e21bdf4478e90823f6331786b14b3ae43f27b233"
+      },
+      {
+        "path": "/fs_mol/cxq/Xmaster_AgentRL/repair_sft/LLaMA-Factory/saves/qwen3-32b-nmr-matching-tool/full-v6_4/checkpoint-63/generation_config.json",
+        "role": "checkpoint sidecar",
+        "size_bytes": 187,
+        "mtime_utc": "2026-09-29T14:52:04.295889+00:00",
+        "hash_method": "sha256",
+        "sha256": "d65705d44f237c3bde24c405437a7467c67a2d4dbefe9f3e3632f613741771c6"
+      },
+      {
+        "path": "/fs_mol/cxq/Xmaster_AgentRL/repair_sft/LLaMA-Factory/saves/qwen3-32b-nmr-matching-tool/full-v6_4/checkpoint-63/model.safetensors.index.json",
+        "role": "checkpoint sidecar",
+        "size_bytes": 58362,
+        "mtime_utc": "2026-09-29T14:53:05.450378+00:00",
+        "hash_method": "sha256",
+        "sha256": "6c1485a886bfe8030018d8a961951f000439a390aa2af59ab1a959356a0e816e"
+      },
+      {
+        "path": "/fs_mol/cxq/Xmaster_AgentRL/repair_sft/LLaMA-Factory/saves/qwen3-32b-nmr-matching-tool/full-v6_4/checkpoint-63/tokenizer.json",
+        "role": "checkpoint sidecar",
+        "size_bytes": 11422650,
+        "mtime_utc": "2026-09-29T14:53:05.599305+00:00",
+        "hash_method": "sha256",
+        "sha256": "be75606093db2094d7cd20f3c2f385c212750648bd6ea4fb2bf507a6a4c55506"
+      },
+      {
+        "path": "/fs_mol/cxq/Xmaster_AgentRL/repair_sft/LLaMA-Factory/saves/qwen3-32b-nmr-matching-tool/full-v6_4/checkpoint-63/tokenizer_config.json",
+        "role": "checkpoint sidecar",
+        "size_bytes": 720,
+        "mtime_utc": "2026-09-29T14:53:05.452758+00:00",
+        "hash_method": "sha256",
+        "sha256": "f75cf0b5ad1a43e59e36fda8e85cf3b33f7838eb10b8f92cadd22321528ab20a"
+      },
+      {
+        "path": "/fs_mol/cxq/Xmaster_AgentRL/repair_sft/LLaMA-Factory/saves/qwen3-32b-nmr-matching-tool/full-v6_4/checkpoint-63/trainer_state.json",
+        "role": "checkpoint sidecar",
+        "size_bytes": 2073,
+        "mtime_utc": "2026-09-29T14:53:07.823232+00:00",
+        "hash_method": "sha256",
+        "sha256": "b9deb800b15157a169d8916467df6011f3f2c437de5a99119cfe9066a760e029"
+      },
+      {
+        "path": "/fs_mol/cxq/Xmaster_AgentRL/repair_sft/LLaMA-Factory/saves/qwen3-32b-nmr-matching-tool/full-v6_4/checkpoint-63/training_args.bin",
+        "role": "checkpoint sidecar",
+        "size_bytes": 7480,
+        "mtime_utc": "2026-09-29T14:53:05.618515+00:00",
+        "hash_method": "sha256",
+        "sha256": "500538eb68b917708964adbfc741777e22fd05de6605a8ad373c5cc1e2a74d8f"
+      }
+    ],
+    "weight_shards": [
+      {
+        "path": "/fs_mol/cxq/Xmaster_AgentRL/repair_sft/LLaMA-Factory/saves/qwen3-32b-nmr-matching-tool/full-v6_4/checkpoint-63/model-00001-of-00002.safetensors",
+        "role": "weight shard",
+        "size_bytes": 49921162112,
+        "mtime_utc": "2026-09-29T14:52:49.404122+00:00",
+        "hash_method": "metadata_only",
+        "sha256": null,
+        "note": "metadata_only is size and mtime, not a full weight checksum"
+      },
+      {
+        "path": "/fs_mol/cxq/Xmaster_AgentRL/repair_sft/LLaMA-Factory/saves/qwen3-32b-nmr-matching-tool/full-v6_4/checkpoint-63/model-00002-of-00002.safetensors",
+        "role": "weight shard",
+        "size_bytes": 15603167272,
+        "mtime_utc": "2026-09-29T14:53:05.445166+00:00",
+        "hash_method": "metadata_only",
+        "sha256": null,
+        "note": "metadata_only is size and mtime, not a full weight checksum"
+      }
+    ],
+    "weight_hash_method": "metadata_only",
+    "weight_hash_note": "Shard entries record size and mtime only. They are not a full weight checksum."
+  },
+  "datasets_and_cache": [
+    {
+      "path": "/fs_mol/cxq/Xmaster_AgentRL/repair_sft/LLaMA-Factory/data/nmr_matching_tool_sft_v6_4.json",
+      "role": "v6.4 SFT training set",
+      "size_bytes": 34739781,
+      "mtime_utc": "2026-09-29T10:18:38.577706+00:00",
+      "hash_method": "sha256",
+      "sha256": "fd8584202a82b6702db6d55a5317df804d618cb08588ffffc7ee32805d6c2052"
+    },
+    {
+      "path": "/fs_mol/cxq/Xmaster_AgentRL/repair_sft/LLaMA-Factory/data/nmr_matching_tool_sft_v6_4_val.json",
+      "role": "v6.4 SFT validation set",
+      "size_bytes": 1077545,
+      "mtime_utc": "2026-09-29T10:18:38.613596+00:00",
+      "hash_method": "sha256",
+      "sha256": "ea1148c51c48b79abb076b01f822aa2e98dbb2932abc751d041520f2743a6ab4"
+    },
+    {
+      "path": "/fs_mol/cxq/Xmaster_AgentRL/repair_sft/LLaMA-Factory/data/nmr_matching_tool_sft_v6_4_split_report.json",
+      "role": "v6.4 split report",
+      "size_bytes": 824,
+      "mtime_utc": "2026-09-29T10:18:38.632972+00:00",
+      "hash_method": "sha256",
+      "sha256": "8a1cde1ec716236bfe25651dc51b5963f4e80d249e76d16fa871a444bd57b69f"
+    },
+    {
+      "path": "/fs_mol/cxq/SpecMaster_jp/data/nmr_matching_test_2000.json",
+      "role": "test_2000 evaluation set",
+      "size_bytes": 1534992,
+      "mtime_utc": "2026-09-10T07:58:47.356326+00:00",
+      "hash_method": "sha256",
+      "sha256": "6ec685a7b700928b09b29f955417bf13918310239eda07c4d8e5fbc2042af121"
+    },
+    {
+      "path": "/fs_mol/cxq/SpecMaster_jp/data/nmr_matching_test_2000_manifest.json",
+      "role": "test_2000 manifest",
+      "size_bytes": 2970,
+      "mtime_utc": "2026-09-10T07:58:47.372309+00:00",
+      "hash_method": "sha256",
+      "sha256": "6199020e36add4b820a5b4b1326aa440c6a54276097b2c8b63dfb8c0e4db5d1b"
+    },
+    {
+      "path": "/fs_mol/cxq/Xmaster_AgentRL/Open-AgentRL/recipe/nmr_matching_agent/prediction_cache.json",
+      "role": "primary spectral_match prediction cache",
+      "size_bytes": 26990168,
+      "mtime_utc": "2026-09-27T08:02:19.338943+00:00",
+      "hash_method": "sha256",
+      "sha256": "6cf48dd240a81b6f8653cdc8fb49eac40d9fe17ab4013b1bda709a9deaf3898b"
+    }
+  ],
+  "llamafactory_local_changes": {
+    "template_py": {
+      "path": "/fs_mol/cxq/Xmaster_AgentRL/repair_sft/LLaMA-Factory/src/llamafactory/data/template.py",
+      "head_blob": "89b70d11437d837fc4ca58781c6187ba910758ae",
+      "worktree_sha256": "7bcc160a2f84408143c3658c0f06a1b304a8bc61578f2d3682e0c808bcbef1f7",
+      "patch": "docs/rsi/llamafactory_local_template.patch",
+      "patch_sha256": "bf0b22695a62f786566ce53d22eb7a1a9033ce76f023c2123c881875fc4e2391",
+      "affects_v6_4_training": false,
+      "reason": "The local patch only registers template qwen3_5_textonly. The v6.4 yaml uses template qwen3."
+    },
+    "dataset_info": {
+      "path": "/fs_mol/cxq/Xmaster_AgentRL/repair_sft/LLaMA-Factory/data/dataset_info.json",
+      "head_blob": "4d105699026995d1455f6ecb44e2702bef97a7c3",
+      "worktree_sha256": "a9e7da2c3a373b905dbfebfc3d92b898d3f07be80102a8dc062529883f8eeb38",
+      "task_keys": [
+        "nmr_matching_tool_sft_v6_4",
+        "nmr_matching_tool_sft_v6_4_val"
+      ],
+      "extracted_to": "configs/llamafactory/dataset_info_nmr_v6_4.json",
+      "live_file_modified_by_this_step": false,
+      "note": "Other local keys, including smiles_repair and older NMR versions, stay in the worktree and were not committed or rewritten."
+    }
+  },
+  "private_assets_remain_on_server": [
+    "SpecMaster models/",
+    "checkpoint-63 weight shards",
+    "LLaMA-Factory data/nmr_matching_tool_sft_v6_4*.json",
+    "Open-AgentRL recipe/nmr_matching_agent/prediction_cache.json and data*/",
+    "rsi_runs/ private backups of the pre-refactor scripts"
+  ],
+  "environment": {
+    "path": "docs/rsi/environment_versions.json",
+    "sha256": "a21112c0b15d7ab2f2282ba75c43f50ed634ec0e95d80ca9ec59e0749df3f831"
+  }
+}

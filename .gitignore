@@ -1,0 +1,56 @@
+# Upload exclusions for the SpecMaster NMR matching tree.
+# Do not add a blanket *.json rule: small runtime configs must stay eligible.
+
+# Weights and local model checkouts
+/models/
+*.safetensors
+*.pt
+*.pth
+*.ckpt
+*.onnx
+
+# Datasets, generated corpora, and logs
+/data/
+/cot_output*/
+/distill_out*/
+/eval_results*/
+/eval_baselines*/
+/negative_output*/
+/hard_negative_output*/
+/perturbation_output*/
+*.jsonl
+*.log
+
+# Prediction-cache artifacts. This does not match rebuild_prediction_cache.py.
+prediction_cache.json
+prediction_cache.json.*
+**/prediction_cache.json
+**/prediction_cache.json.*
+
+# Smoke-test inputs and run products. The synthetic fixture is tests/fixtures/.
+/smoke_test/
+
+# Local step records, including credential backups
+/rsi_runs/
+/private_backups/
+
+# Tooling and editor state
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+node_modules/
+.claude/
+.kiro/
+.pool_cache/
+.vscode/
+.idea/
+.cursor/
+
+# Secrets. The empty example remains tracked.
+.env
+.env.*
+!.env.example
+*.pem
+credentials.json
+secrets.json

@@ -1,0 +1,15 @@
+{
+  "id": "synthetic-ethanol-001",
+  "description": "Small synthetic ethanol-style case for offline tests. Not a training or evaluation sample.",
+  "candidate_smiles": "CCO",
+  "nmr_solvent": "CDCl3",
+  "nmr_frequency": "400 MHz",
+  "c_nmr_peaks": [
+    {"delta (ppm)": 57.8},
+    {"delta (ppm)": 18.2}
+  ],
+  "h_nmr_peaks": [
+    {"delta": 3.65, "nH": 2, "category": "q"},
+    {"delta": 1.18, "nH": 3, "category": "t"}
+  ]
+}

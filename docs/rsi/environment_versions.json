@@ -1,0 +1,46 @@
+{
+  "recorded_at": "2026-11-24T09:10:12.873379+00:00",
+  "host": "t-20261102113255-f7vhv-worker-0",
+  "note": "Package versions only. Environment variables and credentials are not exported.",
+  "interpreters": {
+    "default": {
+      "path": "/root/miniconda3/bin/python3",
+      "version": "Python 3.10.15"
+    },
+    "JPsft": {
+      "path": "/fs_mol/cxq/conda_env/JPsft/bin/python",
+      "version": "Python 3.11.13",
+      "used_by": "scripts/run_nmr_matching_api.sh",
+      "packages": {
+        "torch": "2.6.0",
+        "transformers": "5.6.0",
+        "peft": "0.18.1",
+        "accelerate": "1.10.1",
+        "datasets": "4.0.0",
+        "deepspeed": "0.19.2",
+        "rdkit": "2026.3.1",
+        "litellm": "1.91.0",
+        "vllm": "0.8.5.post1",
+        "llamafactory": "0.9.6.dev0",
+        "numpy": "1.26.4"
+      }
+    },
+    "OpenAgentRL": {
+      "path": "/fs_mol/cxq/conda_env/OpenAgentRL/bin/python",
+      "version": "Python 3.11.13",
+      "packages": {
+        "torch": "2.6.0",
+        "transformers": "4.57.1",
+        "peft": "0.18.1",
+        "accelerate": "1.10.1",
+        "datasets": "4.0.0",
+        "deepspeed": null,
+        "rdkit": "2026.3.1",
+        "litellm": "1.91.0",
+        "vllm": "0.8.5.post1",
+        "llamafactory": "0.9.6.dev0",
+        "numpy": "2.2.6"
+      }
+    }
+  }
+}

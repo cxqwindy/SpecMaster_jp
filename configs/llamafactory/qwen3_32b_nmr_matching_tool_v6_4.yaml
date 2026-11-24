@@ -1,0 +1,47 @@
+### Model
+model_name_or_path: /fs_mol/cxq/Xmaster_AgentRL/repair_sft/LLaMA-Factory/saves/qwen3-32b-nmr-matching-tool/full-v6_1
+
+### Method
+stage: sft
+do_train: true
+finetuning_type: full
+
+### Dataset
+dataset: nmr_matching_tool_sft_v6_4
+eval_dataset: nmr_matching_tool_sft_v6_4_val
+template: qwen3
+cutoff_len: 6144
+max_samples: 999999
+overwrite_cache: true
+preprocessing_num_workers: 8
+
+### Output
+output_dir: saves/qwen3-32b-nmr-matching-tool/full-v6_4
+logging_steps: 10
+save_steps: 100
+plot_loss: true
+overwrite_output_dir: true
+save_only_model: true
+save_total_limit: 3
+
+### Train
+per_device_train_batch_size: 1
+gradient_accumulation_steps: 8
+learning_rate: 5.0e-7
+num_train_epochs: 1.0
+lr_scheduler_type: cosine
+warmup_ratio: 0.03
+bf16: true
+ddp_timeout: 180000000
+torch_compile: false
+
+### Memory optimization
+gradient_checkpointing: true
+
+### Eval
+per_device_eval_batch_size: 1
+eval_strategy: steps
+eval_steps: 100
+
+### DeepSpeed
+deepspeed: examples/deepspeed/ds_z3_offload_config.json
