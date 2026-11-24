@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Run standalone_infer_matching.py across N_GPUS GPUs in parallel.
-# Each GPU gets an equal slice of the test file; results are merged at the end.
+# Each GPU gets an equal slice of the test file. Split stamps a global harness
+# pair id on the shard copies; merge restores that order from the manifest.
 #
 # Usage:
 #   bash scripts/run_infer_parallel.sh \
@@ -97,6 +98,7 @@ echo "[parallel-infer] merging results..."
 SHARD_OUTS=$(for i in $(seq 0 $((N_GPUS - 1))); do echo "$TMPDIR/result_${i}.json"; done | tr '\n' ' ')
 python "$SPLIT_SCRIPT" merge \
   --inputs $SHARD_OUTS \
+  --manifest "$TMPDIR/shard_manifest.json" \
   --output "$OUTPUT"
 
 echo "[parallel-infer] done → $OUTPUT"
