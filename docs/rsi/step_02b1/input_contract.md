@@ -16,7 +16,7 @@ The model user message, the router record, and the tool `raw_prompt` may contain
 - `nmr_frequency_nucleus`, one of `1H`, `13C`, `spectrometer`, or `unknown`
 - `experimental_total_nH` when the input itself provides it, including the value `0`
 
-Precision, duplicate peaks, and peak order are kept. The reader does not deduplicate, sort, round, strip salts, or drop stereo. `normalize_task_input` returns a new object and is idempotent.
+Precision, duplicate peaks, peak order, and negative shifts are kept. The reader does not deduplicate, sort, round, strip salts, or drop stereo. `candidate_smiles` must be a non-empty SMILES string that RDKit can parse; a dict, list, or bool is rejected rather than coerced. Each peak must have a finite shift or a complete range. An empty peak object is a located error. It is not dropped and it is not an experimental signal. `normalize_task_input` returns a new object and is idempotent.
 
 Gold, labels, `gt_smiles`, `negative_type`, sample ids, source paths, and review evidence do not enter those three surfaces. `idx` and other peak metadata are dropped. The original-input hash, field source, parse warnings, conflicts, and split id stay in the harness sidecar. The schema version may be recorded beside the physical object; it is not a physical field.
 
@@ -26,7 +26,7 @@ The canonical text is `json.dumps(normalized, ensure_ascii=False, sort_keys=True
 
 ## Old Alpaca text
 
-Commas inside parentheses stay inside one peak, so `J=7.3, 2.0` is one coupling string. The `J` pattern does not consume the integer of an `nH` token such as `3H`. Category, the raw `J` string, an explicit `nH`, and an explicit range are kept. A range sets `rangeMin` and `rangeMax` and does not invent a centroid. A single written shift is copied to both `delta` and `centroid` because the text does not distinguish them. `N/A` means no peaks. An unparseable token raises with its location. A missing optional `J` is not a failure. Empty parentheses leave `nH` absent. A bare shift does not become `nH` 1.
+Commas inside parentheses stay inside one peak, so `J=7.3, 2.0` is one coupling string. `J` numbers and the `nH` token are separate comma-separated tokens: `12H`, `10H`, and `100H` stay whole integrals and are not prefixes of a J value. Category, the raw `J` string, an explicit `nH`, and an explicit range are kept. A missing `nH` stays missing. It is not written as 1 or 0. A range sets `rangeMin` and `rangeMax` and does not invent a centroid. A single written shift is copied to both `delta` and `centroid` because the text does not distinguish them. `N/A` means no peaks. An unparseable token raises with its location. A missing optional `J` is not a failure. Empty parentheses leave `nH` absent. A bare shift does not become `nH` 1.
 
 Data the old text does not contain stays absent. The reader does not restore a rounded display value to a finer source value.
 
@@ -48,11 +48,11 @@ Retaining solvent and frequency does not mean the spectrum predictor consumes th
 
 ## Integrals
 
-Missing or null `nH` stays unknown on the string reader, CLI, API, vLLM record, RL tool, and `count_atoms` input. `0` is a real value. A complete peak-table sum exists only when every participating peak integral is known and finite. A partial sum is reported as `known_nH_sum` with completeness `partial`. It is not `experimental_total_nH` and it is not a hydrogen-count conflict. An explicit total is an independent observation and is passed through every entry, including `call_v5_vllm`. If an explicit total and a complete peak-table sum disagree, both numbers are retained, `integral_conflict` is true, and neither is chosen as the comparison total. The candidate's theoretical hydrogen count does not fill the experimental total. When `experimental_total_nH` is absent, the router treats the hydrogen count as unavailable, so the result is not a definite No. Bool and non-finite integrals are errors. Numeric strings are not coerced.
+Missing or null `nH` stays unknown on the string reader, CLI, API, vLLM record, RL tool, and `count_atoms` input. `0` is a real value. A complete peak-table sum exists only when every participating peak integral is known and finite. A partial sum is reported as `known_nH_sum` with completeness `partial`. It is not `experimental_total_nH` and it is not a hydrogen-count conflict. An explicit total is an independent observation and is passed through every entry, including `call_v5_vllm`. If an explicit total and a complete peak-table sum disagree, both numbers are retained, `integral_conflict` is true, and neither is chosen as the comparison total. The candidate's theoretical hydrogen count does not fill the experimental total. When `experimental_total_nH` is absent, the router treats the hydrogen count as unavailable, so the result is not a definite No. Bool and non-finite integrals are errors. A negative peak integral or a negative explicit total is rejected and is not used as a hydrogen-count conclusion. Numeric strings are not coerced. A scalar peak list is converted to the same peak objects the tools read. An empty peak object is a located error.
 
 ## RL rows
 
-The tool projects the physical task out of the user JSON. Reward `ground_truth.candidate_smiles` does not fill or replace the task candidate. A gold candidate that differs from the task candidate does not raise, because a negative may differ. A missing task candidate is an error and is not recovered from gold. A legal outer task schema is used when present. `_gt_smiles` is not a candidate. Historical `_candidate_smiles` is only a consistency check; a conflict is rejected and located. Existing parquet files are not rewritten.
+The tool projects the physical task out of the user JSON. Reward `ground_truth.candidate_smiles` does not fill or replace the task candidate. A gold candidate that differs from the task candidate does not raise, because a negative may differ. A missing task candidate is an error and is not recovered from gold. A legal outer task schema is used when present. `_gt_smiles` is not a candidate. Historical `_candidate_smiles` is only a consistency check; a conflict is rejected and located. Existing parquet files are not rewritten. Both parquet and Alpaca conversion keep `input_sidecar` in non-model metadata. Headers, conflicts, gold, and file paths stay there. The model task remains the physical JSON. The original hash tracks the input and does not replace field presence. Outer fields, a JSON task string, and old text headers are recorded separately before they are merged.
 
 ## Source eligibility
 
@@ -62,6 +62,12 @@ Structure identity uses RDKit 2026.03.1, `MolFromSmiles` defaults, and `MolToSmi
 
 `gold_unresolved` rows stay in the denominator and out of the automatic positive-generation pool. Missing `nH`, a single nucleus, or an unknown frequency is coverage, not a quality rejection. This step does not choose search-dev or gate-dev, a sample size, a class ratio, or a promotion threshold, and it does not call the negative predictor.
 
+Frozen structure ownership is applied before any candidate is accepted. It stays in force when the related positive row is not in the batch, and the accept or reject result does not depend on input order. A cross-split negative is rejected. It does not displace a frozen test or gate row. An unfrozen structure that is only a candidate and is claimed by more than one split keeps the lexicographically smallest split name. Missing identifiers, a missing source or candidate, a repeated record id, and an illegal split are explicit rejections. This step does not write a formal split.
+
+## Decided
+
+A missing or null `nH` stays unknown. The reader does not fill 1 or 0. The raw frequency string is kept and the nucleus stays `unknown` unless the input itself names `1H`, `13C`, or `spectrometer`. What each source frequency string meant on the instrument remains a data blind spot; the handling rule is not.
+
 ## Still pending
 
-The nucleus of each source frequency string, the checkpoint-200 dataset, the Qwen pretraining corpus, the `observation_fixed` command log, v6 sibling ground truth, whether `[]` and null should later be unified, whether a future formatter may render a missing `nH` as 1, alias priority, development-set size, positive/negative ratio, difficulty, the ambiguity-flag rule, the promotion margin, and the statistical criterion.
+The checkpoint-200 dataset, the Qwen pretraining corpus, the `observation_fixed` command log, v6 sibling ground truth, whether `[]` and null should later be unified, alias priority, development-set size, positive/negative ratio, difficulty, the ambiguity-flag rule, the promotion margin, and the statistical criterion.

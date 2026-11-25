@@ -176,84 +176,160 @@ def spectrum_difference_labels(left: Mapping[str, Any], right: Mapping[str, Any]
     return tuple(labels)
 
 
+def _record_problem(record: Mapping[str, Any]) -> str | None:
+    record_id = record.get("record_id")
+    if not isinstance(record_id, str) or not record_id:
+        return "missing_record_id"
+    source_gt = record.get("source_gt")
+    if not isinstance(source_gt, str) or not source_gt:
+        return "missing_source_gt"
+    candidate = record.get("candidate")
+    if not isinstance(candidate, str) or not candidate:
+        return "missing_candidate"
+    if record.get("split") not in SPLITS:
+        return "illegal_split"
+    return None
+
+
 def check_cross_split(
     records: Iterable[Mapping[str, Any]],
     frozen_groups: Mapping[str, str] | None = None,
 ) -> dict[str, Any]:
-    """Keep every derivative of one source GT in one split, including negative candidates.
+    """Apply frozen structure ownership before any candidate is accepted.
 
-    ``records`` contain ``source_gt``, ``candidate``, ``split``, and ``kind``.
-    A structure held by one split cannot appear as a GT or a negative candidate
-    in another split. ``frozen_groups`` maps a source GT to the split it must keep.
+    ``frozen_groups`` owns its structures even when this batch has no positive
+    row for them. A negative candidate cannot take a frozen test or gate
+    structure, and input order does not change that decision. Every input row
+    is returned once, in ``accepted`` or ``rejected``.
+
+    An unfrozen structure that is only a candidate, and is requested by more
+    than one split, keeps the lexicographically smallest split name. The other
+    rows are rejected with ``unfrozen_structure_tie_break``. A structure that
+    is a source GT is owned by that group's split before candidate claims are
+    considered, so this tie-break does not replace a source-GT or frozen owner.
     """
     frozen = dict(frozen_groups or {})
     items = [dict(record) for record in records]
-    grouped: dict[str, list[dict[str, Any]]] = {}
-    for record in items:
-        grouped.setdefault(str(record.get("source_gt")), []).append(record)
-    group_split: dict[str, str] = {}
     rejected: list[dict[str, Any]] = []
-    blocked: set[tuple[str, str]] = set()
-    for source_gt, group in grouped.items():
-        requested = {str(record.get("split")) for record in group}
-        if source_gt in frozen:
+    if any(
+        not isinstance(structure, str) or not structure or split not in SPLITS
+        for structure, split in frozen.items()
+    ):
+        for record in items:
+            rejected.append({**record, "reason": "illegal_frozen_assignment"})
+        return {
+            "accepted": [],
+            "rejected": rejected,
+            "structure_owner": {},
+            "leaked_structures": [],
+            "splits": list(SPLITS),
+            "tie_break": "lexicographic split name for unfrozen candidate-only claims",
+        }
+
+    valid: list[dict[str, Any]] = []
+    for record in items:
+        problem = _record_problem(record)
+        if problem:
+            rejected.append({**record, "reason": problem})
+        else:
+            valid.append(record)
+    id_counts = Counter(record["record_id"] for record in valid)
+    unique: list[dict[str, Any]] = []
+    for record in valid:
+        if id_counts[record["record_id"]] > 1:
+            rejected.append({**record, "reason": "duplicate_record_id"})
+        else:
+            unique.append(record)
+
+    provisional = dict(frozen)
+    grouped: dict[str, list[dict[str, Any]]] = {}
+    for record in unique:
+        grouped.setdefault(record["source_gt"], []).append(record)
+    pending: list[dict[str, Any]] = []
+    for source_gt in sorted(grouped):
+        group = grouped[source_gt]
+        requested = sorted({record["split"] for record in group})
+        if source_gt in frozen and any(record["split"] != frozen[source_gt] for record in group):
             required = frozen[source_gt]
-            group_split[source_gt] = required
             for record in group:
-                if str(record.get("split")) != required:
+                if record["split"] != required:
                     rejected.append({
                         **record,
                         "reason": "frozen_source_group",
                         "required_split": required,
                     })
-                    blocked.add((str(record.get("record_id")), str(record.get("split"))))
+                else:
+                    pending.append(record)
             continue
         if len(requested) > 1:
             for record in group:
                 rejected.append({
                     **record,
                     "reason": "source_gt_derivatives_conflict",
-                    "requested_splits": sorted(requested),
+                    "requested_splits": requested,
                 })
-                blocked.add((str(record.get("record_id")), str(record.get("split"))))
             continue
-        group_split[source_gt] = next(iter(requested))
+        proposed = frozen.get(source_gt, requested[0])
+        if source_gt in provisional and provisional[source_gt] != proposed:
+            for record in group:
+                rejected.append({
+                    **record,
+                    "reason": "cross_split_structure",
+                    "structure": source_gt,
+                    "owner_split": provisional[source_gt],
+                })
+            continue
+        provisional.setdefault(source_gt, proposed)
+        pending.extend(group)
 
+    claim_splits: dict[str, set[str]] = {}
+    for record in pending:
+        claim_splits.setdefault(record["candidate"], set()).add(record["split"])
     accepted: list[dict[str, Any]] = []
-    owner: dict[str, str] = {}
-    for record in items:
-        source_gt = str(record.get("source_gt"))
-        split = str(record.get("split"))
-        if (str(record.get("record_id")), split) in blocked or source_gt not in group_split:
-            continue
-        if split != group_split[source_gt]:
-            continue
-        structures = [value for value in (record.get("source_gt"), record.get("candidate")) if _present(value)]
-        conflict = next((value for value in structures if value in owner and owner[value] != split), None)
-        if conflict is not None:
+    for record in pending:
+        candidate = record["candidate"]
+        split = record["split"]
+        if candidate in provisional and provisional[candidate] != split:
             rejected.append({
                 **record,
                 "reason": "cross_split_structure",
-                "structure": conflict,
-                "owner_split": owner[conflict],
+                "structure": candidate,
+                "owner_split": provisional[candidate],
             })
             continue
-        for value in structures:
-            owner.setdefault(str(value), split)
+        claims = claim_splits.get(candidate, {split})
+        if candidate not in provisional and len(claims) > 1 and split != min(claims):
+            rejected.append({
+                **record,
+                "reason": "unfrozen_structure_tie_break",
+                "structure": candidate,
+                "kept_split": min(claims),
+            })
+            continue
         accepted.append({**record, "assigned_split": split})
+
+    owner = dict(frozen)
+    for record in accepted:
+        for value in (record["source_gt"], record["candidate"]):
+            current = owner.get(value)
+            if current is not None and current != record["assigned_split"]:
+                raise RuntimeError(f"ownership conflict for {value}")
+            owner[value] = record["assigned_split"]
     leaked = []
     seen: dict[str, str] = {}
     for record in accepted:
-        for value in (record.get("source_gt"), record.get("candidate")):
-            if not _present(value):
-                continue
-            if value in seen and seen[str(value)] != record["assigned_split"]:
-                leaked.append(str(value))
-            seen[str(value)] = str(record["assigned_split"])
+        for value in (record["source_gt"], record["candidate"]):
+            if value in seen and seen[value] != record["assigned_split"]:
+                leaked.append(value)
+            seen[value] = record["assigned_split"]
+    covered = [item.get("record_id") for item in accepted] + [item.get("record_id") for item in rejected]
+    if len(covered) != len(items):
+        raise RuntimeError("accepted and rejected do not cover every input record")
     return {
         "accepted": accepted,
         "rejected": rejected,
         "structure_owner": owner,
         "leaked_structures": leaked,
         "splits": list(SPLITS),
+        "tie_break": "lexicographic split name for unfrozen candidate-only claims",
     }

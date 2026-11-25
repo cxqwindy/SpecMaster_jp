@@ -40,8 +40,6 @@ from recipe.nmr_matching_agent.task_input import (  # noqa: E402
     _CAND_RE,
     _HEADER_RE,
     _split_header_parenthetical,
-    parse_c_peak_list,
-    parse_h_peak_list,
 )
 from step_02a_audit import (  # noqa: E402
     LMDB_ROOT,
@@ -717,14 +715,14 @@ def _structured_fields(task: Mapping[str, Any], totals: dict[str, Counter]) -> d
     except Exception as exc:
         return {"parse": _add(totals, "parse", "fail"), "error": str(exc)}
     result = {"parse": _add(totals, "parse", "kept")}
-    same = again == normalized
     result["candidate"] = _add(totals, "candidate", _field_status(True, normalized["candidate_smiles"] == again["candidate_smiles"], failed))
     result["c_peaks"] = _add(totals, "c_peaks", _field_status(True, normalized["c_nmr_peaks"] == again["c_nmr_peaks"], failed))
     result["h_peaks"] = _add(totals, "h_peaks", _field_status(True, normalized["h_nmr_peaks"] == again["h_nmr_peaks"], failed))
-    result["nH"] = _add(totals, "nH", _peak_key_status(normalized["h_nmr_peaks"], "nH", same))
-    result["category"] = _add(totals, "category", _peak_key_status(normalized["h_nmr_peaks"], "category", same))
-    result["j"] = _add(totals, "j", _peak_key_status(normalized["h_nmr_peaks"], "j_values", same))
-    result["ranges"] = _add(totals, "ranges", _peak_key_status(normalized["h_nmr_peaks"], "rangeMin", same))
+    source_h = task.get("h_nmr_peaks") if isinstance(task.get("h_nmr_peaks"), list) else []
+    result["nH"] = _add(totals, "nH", _explicit_peak_key(source_h, normalized["h_nmr_peaks"], "nH"))
+    result["category"] = _add(totals, "category", _explicit_peak_key(source_h, normalized["h_nmr_peaks"], "category"))
+    result["j"] = _add(totals, "j", _explicit_peak_key(source_h, normalized["h_nmr_peaks"], "j_values"))
+    result["ranges"] = _add(totals, "ranges", _explicit_range_status(source_h, normalized["h_nmr_peaks"]))
     for field in ("nmr_solvent", "nmr_frequency", "experimental_total_nH"):
         present = field in task and task.get(field) is not None
         result[field] = _add(totals, field, _field_status(present, normalized.get(field) == again.get(field), failed))
@@ -748,6 +746,110 @@ def _peak_key_status(peaks: Any, key: str, roundtrip_same: bool) -> str:
     return "kept" if roundtrip_same else "changed"
 
 
+_WITNESS_NUMBER = r"[+-]?(?:[0-9]+(?:\.[0-9]+)?|\.[0-9]+)"
+_WITNESS_NH = re.compile(r"^(\d+)\s*H$", re.IGNORECASE)
+_WITNESS_J = re.compile(rf"^J\s*=\s*({_WITNESS_NUMBER})$", re.IGNORECASE)
+_WITNESS_CONT = re.compile(rf"^{_WITNESS_NUMBER}$")
+_WITNESS_CATEGORY = re.compile(r"^[A-Za-z][A-Za-z0-9]*(?:[ \t]+[A-Za-z][A-Za-z0-9]*)*$")
+_WITNESS_SHIFT = re.compile(
+    rf"^({_WITNESS_NUMBER})(?:\s*-\s*({_WITNESS_NUMBER}))?(?:\s*\((.*)\))?$"
+)
+
+
+def _witness_commas(text: str) -> list[str]:
+    parts: list[str] = []
+    buffer: list[str] = []
+    depth = 0
+    for char in text:
+        if char == "(":
+            depth += 1
+            buffer.append(char)
+        elif char == ")":
+            depth -= 1
+            buffer.append(char)
+        elif char == "," and depth == 0:
+            parts.append("".join(buffer).strip())
+            buffer = []
+        else:
+            buffer.append(char)
+    tail = "".join(buffer).strip()
+    if tail:
+        parts.append(tail)
+    return [part for part in parts if part]
+
+
+def _witness_inner(inner: str) -> dict[str, Any]:
+    """Read category, J, and nH from explicit tokens. This is not the production parser."""
+    kept: dict[str, Any] = {}
+    category = None
+    j_numbers: list[str] = []
+    expecting_j = False
+    for piece in _witness_commas(inner):
+        token = piece.strip()
+        if not token:
+            continue
+        nh_match = _WITNESS_NH.fullmatch(token)
+        if nh_match:
+            kept["nH"] = int(nh_match.group(1))
+            expecting_j = False
+            continue
+        j_eq = _WITNESS_J.fullmatch(token)
+        if j_eq:
+            j_numbers.append(j_eq.group(1))
+            expecting_j = True
+            continue
+        if expecting_j and _WITNESS_CONT.fullmatch(token):
+            j_numbers.append(token)
+            continue
+        if _WITNESS_CATEGORY.fullmatch(token) and token.casefold() != "h":
+            category = token
+            expecting_j = False
+            continue
+        raise ValueError(f"witness cannot annotate {token!r}")
+    if category is not None:
+        kept["category"] = category
+    if j_numbers:
+        kept["j_values"] = ", ".join(j_numbers)
+    return kept
+
+
+def _witness_h_peaks(body: str | None) -> list[dict[str, Any]] | None:
+    if body is None:
+        return None
+    if not body.strip() or body.strip().casefold() == "n/a":
+        return []
+    peaks = []
+    for token in _witness_commas(body):
+        match = _WITNESS_SHIFT.fullmatch(token.strip())
+        if match is None:
+            raise ValueError(f"witness cannot annotate peak {token!r}")
+        left, right, inner = match.group(1), match.group(2), match.group(3)
+        peak = _witness_inner(inner or "")
+        if right is None:
+            shift = float(left)
+            peak["delta"] = shift
+            peak["centroid"] = shift
+        else:
+            peak["rangeMin"] = float(left)
+            peak["rangeMax"] = float(right)
+        peaks.append(peak)
+    return peaks
+
+
+def _witness_c_peaks(body: str | None) -> list[float] | None:
+    if body is None:
+        return None
+    if not body.strip() or body.strip().casefold() == "n/a":
+        return []
+    return [float(token) for token in _witness_commas(body)]
+
+
+def _witness_status(expected: Any, observed: Any) -> str:
+    if expected is None:
+        return "changed" if observed else "missing"
+    return "kept" if expected == observed else "changed"
+
+
 def _text_fields(text: str, totals: dict[str, Counter]) -> dict[str, str]:
     legacy = _legacy_parse(text)
     try:
@@ -762,13 +864,37 @@ def _text_fields(text: str, totals: dict[str, Counter]) -> dict[str, str]:
         sections["candidate"] is not None,
         parsed.get("candidate_smiles") == sections["candidate"],
     ))
-    result["c_peaks"] = _add(totals, "c_peaks", _list_status(sections["carbon_body"], parsed.get("c_nmr_peaks"), parse_c_peak_list, "13C"))
-    result["h_peaks"] = _add(totals, "h_peaks", _list_status(sections["proton_body"], parsed.get("h_nmr_peaks"), parse_h_peak_list, "1H"))
-    expected_h = [] if sections["proton_body"] is None else parse_h_peak_list(sections["proton_body"], "1H")
-    result["nH"] = _add(totals, "nH", _explicit_peak_key(expected_h, parsed.get("h_nmr_peaks"), "nH"))
-    result["category"] = _add(totals, "category", _explicit_peak_key(expected_h, parsed.get("h_nmr_peaks"), "category"))
-    result["j"] = _add(totals, "j", _explicit_peak_key(expected_h, parsed.get("h_nmr_peaks"), "j_values"))
-    result["ranges"] = _add(totals, "ranges", _explicit_range_status(expected_h, parsed.get("h_nmr_peaks")))
+    try:
+        expected_c = _witness_c_peaks(sections["carbon_body"])
+        expected_h = _witness_h_peaks(sections["proton_body"])
+    except ValueError as exc:
+        result["witness_error"] = str(exc)
+        for field in ("c_peaks", "h_peaks", "nH", "category", "j", "ranges"):
+            result[field] = _add(totals, field, "fail")
+    else:
+        observed_c = [
+            peak.get("delta (ppm)") if isinstance(peak, dict) else None
+            for peak in (parsed.get("c_nmr_peaks") or [])
+        ]
+        observed_h = parsed.get("h_nmr_peaks") or []
+        result["c_peaks"] = _add(totals, "c_peaks", _witness_status(expected_c, observed_c))
+        result["h_peaks"] = _add(totals, "h_peaks", _witness_status(expected_h, observed_h))
+        if expected_h is None:
+            invented_nH = any(isinstance(peak, dict) and peak.get("nH") is not None for peak in observed_h)
+            invented_category = any(isinstance(peak, dict) and peak.get("category") is not None for peak in observed_h)
+            invented_j = any(isinstance(peak, dict) and peak.get("j_values") is not None for peak in observed_h)
+            invented_range = any(
+                isinstance(peak, dict) and ("rangeMin" in peak or "rangeMax" in peak) for peak in observed_h
+            )
+            result["nH"] = _add(totals, "nH", "changed" if invented_nH else "missing")
+            result["category"] = _add(totals, "category", "changed" if invented_category else "missing")
+            result["j"] = _add(totals, "j", "changed" if invented_j else "missing")
+            result["ranges"] = _add(totals, "ranges", "changed" if invented_range else "missing")
+        else:
+            result["nH"] = _add(totals, "nH", _explicit_peak_key(expected_h, observed_h, "nH"))
+            result["category"] = _add(totals, "category", _explicit_peak_key(expected_h, observed_h, "category"))
+            result["j"] = _add(totals, "j", _explicit_peak_key(expected_h, observed_h, "j_values"))
+            result["ranges"] = _add(totals, "ranges", _explicit_range_status(expected_h, observed_h))
     result["solvent"] = _add(totals, "solvent", _header_value_status(
         sections["carbon_solvent"], sections["proton_solvent"], parsed.get("nmr_solvent"), diagnostics, "nmr_solvent",
     ))
@@ -859,7 +985,10 @@ def _explicit_range_status(expected: list, parsed_peaks: Any) -> str:
             return "changed"
         if left.get("rangeMin") != right.get("rangeMin") or left.get("rangeMax") != right.get("rangeMax"):
             return "changed"
-        if left.get("rangeMin") is not None and ("delta" in right or "centroid" in right):
+        # A text range has no shift. A structured peak may already contain both.
+        expected_has_shift = "delta" in left or "centroid" in left
+        observed_has_shift = "delta" in right or "centroid" in right
+        if left.get("rangeMin") is not None and observed_has_shift and not expected_has_shift:
             return "changed"
     return "kept"
 
