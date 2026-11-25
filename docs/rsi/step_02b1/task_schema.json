@@ -1,0 +1,64 @@
+{
+  "schema_version": "nmr-task-v2",
+  "protocol_version": "step_02b1.v1",
+  "description": "Physical NMR matching task. Labels and gold stay outside this object.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["candidate_smiles", "c_nmr_peaks", "h_nmr_peaks", "nmr_frequency_nucleus"],
+  "properties": {
+    "candidate_smiles": {"type": "string"},
+    "c_nmr_peaks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "delta (ppm)": {"type": ["number", "null"]}
+        }
+      }
+    },
+    "h_nmr_peaks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "category": {"type": ["string", "null"]},
+          "centroid": {"type": ["number", "null"]},
+          "delta": {"type": ["number", "null"]},
+          "j_values": {"type": ["string", "number", "array", "null"]},
+          "nH": {"type": ["number", "null"]},
+          "rangeMax": {"type": ["number", "null"]},
+          "rangeMin": {"type": ["number", "null"]}
+        }
+      }
+    },
+    "nmr_solvent": {"type": ["string", "null"]},
+    "nmr_frequency": {
+      "type": ["string", "null"],
+      "description": "Raw frequency string. Not evidence of which nucleus was measured."
+    },
+    "nmr_frequency_nucleus": {
+      "type": "string",
+      "enum": ["1H", "13C", "spectrometer", "unknown"],
+      "default": "unknown"
+    },
+    "experimental_total_nH": {
+      "type": ["number", "null"],
+      "description": "Independent explicit total. Absent when the input does not provide one. Zero is a value."
+    }
+  },
+  "lossless_text": {
+    "encoding": "json.dumps(normalized, ensure_ascii=False, sort_keys=True, allow_nan=False)"
+  },
+  "not_in_model_router_or_tool_prompt": [
+    "label",
+    "_label",
+    "gt_smiles",
+    "_gt_smiles",
+    "negative_type",
+    "sample_id",
+    "source_path",
+    "idx"
+  ]
+}

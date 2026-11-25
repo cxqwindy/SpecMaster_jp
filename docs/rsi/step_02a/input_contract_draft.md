@@ -1,6 +1,6 @@
 # Input contract draft
 
-This draft describes the fields already present in the current task objects. It is not a parser change.
+This draft describes the fields already present in the current task objects. It is not a parser change. Step 02B-1 supersedes it: the shared contract is `docs/rsi/step_02b1/input_contract.md`. The observations below stay historical.
 
 ## Fields to keep together
 

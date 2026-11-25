@@ -10,7 +10,7 @@ The reproducible entry point is `scripts/rsi/step_02a_audit.py`. After the LMDB 
 - `inferred`: a yaml and a trainer state point at the same run, but no log names the dataset file.
 - `unknown`: the file or checkpoint exists, but its membership in the v6.4 weight chain is not established.
 
-The weight chain used for the confirmed exposure set is checkpoint-63, its v6.4 train rows, the v6.1 train file, and the v5 train file. `full-exp1/checkpoint-200` is the configured initializer of v5, but the dataset that produced it is unknown. `nmr_matching_cot_train.json` is therefore an unresolved possible exposure, not a clean source. Sibling runs v6, v6.2, and v6.3 are reported separately and are not treated as parents of checkpoint-63.
+Step 02B-1 splits that wording. Only the v6.4 checkpoint-63 registered train rows are `confirmed`. The v6.1 and v5 train files remain `inferred`: a yaml and a trainer state point at the run, but no log names the file. `full-exp1/checkpoint-200` is still `unknown`; `nmr_matching_cot_train.json` and its validation file are only possible sources. The historical field `weight_train`, and any 02A count labeled as the confirmed train set, is the union of confirmed v6.4 plus inferred v6.1 and v5. That union is 11995 rows and 2087 unique ground-truth structures. The 771 test-set ground-truth intersection is the union, not pure confirmed. Do not keep using `weight_train` as if it were confirmed-only. Conservative eligibility still removes the whole union; inferred rows are not put back. Sibling runs v6, v6.2, and v6.3 stay outside the weight chain.
 
 ## Fingerprints
 
