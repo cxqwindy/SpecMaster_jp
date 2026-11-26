@@ -1,0 +1,50 @@
+{
+  "protocol": "step_02b3.v1",
+  "seed": 20261126,
+  "groups_per_split": 500,
+  "positives_per_group": 1,
+  "negatives_per_group": 3,
+  "ownership_domain": "step_02b3.ownership.v1",
+  "source_domain": "step_02b3.source_sample.v1",
+  "same_formula_domain": "step_02b3.neg_same_formula.v1",
+  "random_domain": "step_02b3.neg_random.v1",
+  "output_domain": "step_02b3.output_order.v1",
+  "record_domain": "step_02b3.record_id.v1",
+  "ownership_index_zero_split": "search-dev",
+  "ownership_odd_count": "search-dev receives one extra structure when the sorted count is odd",
+  "fingerprint": {
+    "radius": 2,
+    "n_bits": 2048,
+    "include_chirality": false,
+    "generator": "rdFingerprintGenerator.GetMorganGenerator"
+  },
+  "eligibility_index": "/fs_mol/cxq/SpecMaster_jp/rsi_runs/step_02b1_20261125T160441+0800/source_eligibility_index.jsonl",
+  "eligibility_report": "/fs_mol/cxq/SpecMaster_jp/rsi_runs/step_02b1_20261125T160441+0800/source_eligibility_report.json",
+  "eligibility_index_sha256": "b1f756d55a99cc3dcf872504b66c2f04738df9c96d9b549d2ae62bab80288665",
+  "eligibility_index_bytes": 817296028,
+  "eligibility_protocol": "step_02b1.v1",
+  "audit_02a": "/fs_mol/cxq/SpecMaster_jp/rsi_runs/step_02a_20261125T130404+0800",
+  "lmdb_root": "/fs_mol/fjxu/proj_data/Spectra/NMR/si_0820/lmdb_dataset",
+  "auto_positive_pool": {
+    "train.lmdb": 916419,
+    "valid.lmdb": 48234,
+    "test.lmdb": 104695
+  },
+  "index_sha256": {
+    "lmdb_valid.lmdb.index.jsonl": "5708d58133053a41ecbc80098f4f9d606de78acfb33a89aabd49808c3680acba",
+    "lmdb_train.lmdb.index.jsonl": "bc833390e2fc0343862d940992ba06c8a50dedfac04b60e89798e2989fdcf4e9",
+    "lmdb_test.lmdb.index.jsonl": "2a0ecce8499f54fa6342c38e85585da8fd24b3cafa711807d221daf493b49818"
+  },
+  "lmdb_metadata": {
+    "valid.lmdb": {"bytes": 150323200, "mtime_ns": 1755691145742146572},
+    "train.lmdb": {"bytes": 2873065472, "mtime_ns": 1755691140098517466},
+    "test.lmdb": {"bytes": 336056320, "mtime_ns": 1755691159012435902}
+  },
+  "primary_metric": "balanced_accuracy_valid",
+  "invalid_policy": "exclude_from_primary",
+  "promotion_enabled": false,
+  "statistics_enabled": false,
+  "example_status": null,
+  "purpose_real": "real_development_dataset",
+  "full_fingerprint_recheck_limit": 200
+}
