@@ -28,6 +28,17 @@ from matching_evaluator import (
 )
 
 
+def rebind_run_manifest(run: Mapping[str, Any], config_document: Mapping[str, Any]) -> dict[str, Any]:
+    """Copy a run manifest and bind its config hash to a different config.
+
+    The prediction file is not modified. A statistics recomputation uses this
+    new manifest instead of ignoring the original config hash.
+    """
+    rebound = dict(run)
+    rebound["config_sha256"] = load_config(config_document)["content_sha256"]
+    return rebound
+
+
 def scoring_config(statistics: Mapping[str, Any] | None = None) -> dict[str, Any]:
     return {
         "schema_version": CONFIG_SCHEMA,

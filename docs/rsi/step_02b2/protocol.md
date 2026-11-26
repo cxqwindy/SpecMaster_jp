@@ -30,7 +30,7 @@ Gold is an integer 0 or 1 on the gold sidecar. 0 is No and 1 is Yes. A bool is n
 
 `source_group_id` is `step_02a.identity_token` of the parent GT SMILES: RDKit `MolFromSmiles` defaults and `MolToSmiles(canonical=True, isomericSmiles=True)`, or `unparsed:<sha256>` when the SMILES does not parse. Salts, tautomers, and stereo are not removed. The id is not taken from the candidate or from a row number. Records that share a parent GT stay in one group. The primary metric still counts candidates, not the mean of group scores.
 
-The physical task is checked with `normalize_task_input`. Gold keys inside the task are integrity errors. A hash stored for the task is the hash of that normalized manifest task. The evaluator does not copy it into `model_observed_task_sha256`. An observed hash is compared only when the prediction itself records one.
+The physical task is checked with `normalize_task_input`. Gold keys inside the task are integrity errors. A hash stored for the task is the hash of that normalized manifest task. The evaluator does not copy it into `model_observed_task_sha256`. A missing `observed_task_sha256` is `not_recorded`. An explicit JSON null is `unknown`. Both stay uncompared. A non-string, a non-hex value, or a hash that does not match the manifest task is an integrity error. `false` and numbers are not treated as missing.
 
 ## Profiles
 
@@ -39,9 +39,37 @@ The prediction file names its profile. Columns are not guessed.
 - `canonical`: `terminal.state` is `answer`, `timeout`, `max_turns`, `empty_answer`, or `parse_error`. A valid row has state `answer` and `final_answer` Yes or No. A failure state together with a Yes/No answer is `terminal_conflict`.
 - `standalone`: the production `answer` and `fail_reason` fields, with `_pair_id` / `pair_id` and the harness run id. Transcript prose is not read.
 - `api`: the response object's `final_answer`. Trajectory `final_answer` values must agree with it. `key_evidence` and `final_think` are not answers.
-- `legacy_diagnostic`: explicit only. Rows are paired in written file order, `pairing_verified` is false, and no formal primary score or A/B comparison is published.
+- `legacy_diagnostic`: explicit only. Rows are paired in written file order, `pairing_verified` is false, and no formal primary score or A/B comparison is published. A missing formal schema is not silently treated as this mode. An unknown schema is rejected even for an explicit legacy read.
 
-A Yes/No value may have surrounding whitespace and either case. `true`, `false`, `0`, `1`, `2`, `-1`, `0.7`, and bools are invalid. They are not coerced. Truncated JSON is `parse_error`. Two `<answer>` blocks are `multiple_answers` even when they agree. A Yes/No that appears only in thinking, a tool response, or gold is not a prediction.
+### Identity
+
+Each strict profile reads only the fields below. A present field is validated before any alias is accepted. An illegal or null value is not ignored because another alias is well formed. Pair id `0` is legal. Bools, negatives, and non-canonical decimal strings are not.
+
+| Profile | Pair fields | Run fields |
+| --- | --- | --- |
+| `canonical` | `pair_id`, `_pair_id` | `run_id`, `_harness_run_id` |
+| `standalone` | `_pair_id`, `pair_id` | `_harness_run_id`, `run_id` |
+| `api` | `pair_id`, `_pair_id` | `run_id`, `_harness_run_id` |
+
+Standalone rows written by `attach_evaluation_meta` carry `_pair_id` and `_harness_run_id`. Those two fields are sufficient. `_harness_pair_id` is an input-file field and is not a prediction identity. API identity stays on the harness row. `response.final_answer` is the decision; keys inside `response` are not identity.
+
+The envelope `run_id`, the row run fields, and the run manifest `run_id` must agree when they are present. A row with no run field may take a legal envelope run id. A historical file with no run binding is still only `legacy_diagnostic`. After the aliases agree, the batch still checks uniqueness, the pair-to-record map, missing and extra rows, and cross-run ids. An identity failure is an integrity failure. It is not a model invalid output, and it does not publish a primary score.
+
+`evaluated_version` is a non-empty label matching `^[A-Za-z0-9][A-Za-z0-9._+-]{0,127}$`. It names the scored artifact and is not a model pointer. Empty, missing, and non-strings are rejected.
+
+### JSON and terminal levels
+
+Duplicate JSON keys are rejected while reading the text, including when the two values are equal. They are not collapsed to the last value.
+
+| Where the duplicate or broken answer appears | Result | Exit |
+| --- | --- | --- |
+| Dataset, gold, run manifest, or the outer prediction object | Integrity failure, no primary score | 2 |
+| Config file only | Configuration rejected, no report | 4 |
+| Answer string or `terminal` string of a row whose identity is already valid | Invalid model output. The row stays in `N` and out of `V` | 0 if the rest of the run is complete |
+
+One complete `<answer>...</answer>` block is still read. A second block, a nested block, or an unclosed `<answer` after a complete block is `multiple_answers` or `parse_error`. The first complete block is not selected. Thinking, tool text, gold, and prose Yes/No are not predictions.
+
+A Yes/No value may have surrounding whitespace and either case. `true`, `false`, `0`, `1`, `2`, `-1`, `0.7`, and bools are invalid. They are not coerced. Truncated JSON is `parse_error`. Two `<answer>` blocks are `multiple_answers` even when they agree. A Yes/No that appears only in thinking, a tool response, or gold is not a prediction. Missing `confidence` or `key_evidence` does not change validity. There is no 0/1 prediction adapter.
 
 A missing prediction is an integrity error. It is not recorded as a timeout. A complete run may contain explicit timeout rows; those rows remain in the coverage counts.
 
@@ -55,7 +83,11 @@ A missing prediction is an integrity error. It is not recorded as a timeout. A c
 
 ## Comparison and resampling
 
-Both runs must pass integrity on the same dataset hash, gold, source groups, and evaluator version. Their `run_id` values may differ. The report gives each run's own-valid balanced accuracy and `delta_ba_own_valid = B - A`, plus coverage differences. It also gives the intersection `V_A ∩ V_B`. That common-valid difference is auxiliary. If the intersection is empty or misses a class, the common metrics are null and the evaluator does not substitute the own-valid scores. A higher own-valid score is not a promotion.
+`evaluate` and `compare` use one run-contract check. A run manifest must carry `config_sha256` as 64 lowercase hex characters equal to the loaded config, a gold sidecar hash equal to the sidecar, prediction `schema_version` `nmr-eval-prediction-v1` for a formal profile, and the `evaluated_version` above. Deleting or zeroing `config_sha256`, an empty version, or a missing or unknown prediction schema fails both commands. Neither command publishes a primary score for that failure.
+
+Both runs must pass that contract and the rest of the integrity checks on the same dataset hash, gold, source groups, and evaluator version. Their `run_id` values may differ, and their pair numbers may differ, as long as each pair map points at the same record set. The report records the effective config hash, gold sidecar hash, task schema, source-group definition, both evaluated versions, and `identity_verified`. The report gives each run's own-valid balanced accuracy and `delta_ba_own_valid = B - A`, plus coverage differences. It also gives the intersection `V_A ∩ V_B`. That common-valid difference is auxiliary. If the intersection is empty or misses a class, the common metrics are null and the evaluator does not substitute the own-valid scores. A higher own-valid score is not a promotion.
+
+A different statistics config may be applied only by writing a new run manifest whose `config_sha256` is the hash of that config. The prediction file stays unchanged. The old manifest is not accepted by ignoring its config hash.
 
 Statistics are off unless the config sets `statistics.enabled` to true and supplies `bootstrap_replicates`, `confidence_level`, `seed`, and `method`. The only method in this step is `paired_cluster_percentile`. Sampling draws the sorted unique `source_group_id` values with replacement, using `random.Random(seed)` and `randrange`. A group drawn twice has weight two and contributes every spectrum and candidate twice. The same index list is used for both runs. Row order does not change the sorted group index. If fewer than two groups exist, the point estimate is undefined, or any replicate is undefined, the interval is null and the undefined count is kept. A replicate is not dropped, replaced by zero, or redrawn until the interval looks complete. An interval of all zeros is reported as a constant zero. It is not a significance claim. This step does not emit `p < 0.05` or a pass/fail threshold. The synthetic configs in tests are not a formal confidence level.
 
@@ -68,5 +100,7 @@ Cost uses every attempted record, including invalid ones. Known tool calls, cach
 ## Synthetic example
 
 `expected_hand.json` records the 12-row hand calculation: `N=12`, `V=9`, confusion `[[3, 2], [1, 3]]`, balanced accuracy `27/40`. The draw `[gA, gA, gD, gD]` has weighted `N=12`, `V=8`, and balanced accuracy `1/2`. Model B has two valid rows and balanced accuracy `1/1`; the own-valid difference is `13/40`, the common-valid difference is `0`, and the coverage cells are `2 / 7 / 0 / 3`. Those scores are a parser and arithmetic check. They are not a model baseline.
+
+Replacing record 2's valid No with a duplicate-key answer, and record 10's timeout with `'{"state":"timeout","state":"answer","final_answer":"Yes"}'`, leaves both rows invalid. The hand counts are then `N=12`, `V=8`, `I=4`, confusion `[[3, 2], [0, 3]]`, and balanced accuracy `4/5`. The invalid rows are not added to FN or FP. This is still a synthetic parser check, not a model baseline.
 
 The old `scripts/summarize_matching_eval.py` and `scripts/compare_matching_evals.py` paths are unchanged historical tools. They are not this protocol. Training reward is unchanged.

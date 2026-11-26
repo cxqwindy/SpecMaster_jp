@@ -8,16 +8,20 @@ written. It does not start a model, a predictor, or a training job.
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 from pathlib import Path
 
 from matching_evaluator import (
+    DuplicateJsonKey,
     EvaluatorError,
     PromotionRefused,
+    _failed_report,
     compare_documents,
     dump_json,
     evaluate_documents,
-    load_json,
+    load_config,
+    loads_strict,
 )
 
 
@@ -44,14 +48,56 @@ def _exit_code(report: dict) -> int:
     return 2
 
 
+def _load_documents(pairs: list[tuple[str, str]]) -> tuple[dict, list[dict[str, str]]]:
+    loaded = {}
+    duplicates = []
+    for role, path in pairs:
+        try:
+            loaded[role] = loads_strict(Path(path).read_text(encoding="utf-8"))
+        except DuplicateJsonKey as exc:
+            duplicates.append({"code": "duplicate_json_key", "detail": f"{role}: duplicate key {exc.key!r}"})
+        except json.JSONDecodeError as exc:
+            raise EvaluatorError("json_parse_error", f"{role}: {exc.msg}") from exc
+    return loaded, duplicates
+
+
+def _reject_duplicates(duplicates: list[dict[str, str]], loaded: dict, out: Path) -> int | None:
+    if not duplicates:
+        return None
+    roles = {item["detail"].split(":", 1)[0] for item in duplicates}
+    if roles == {"config"}:
+        print(duplicates[0]["detail"], file=sys.stderr)
+        return 4
+    config = None
+    if "config" in loaded:
+        try:
+            config = load_config(loaded["config"])
+        except EvaluatorError:
+            config = None
+    report = _failed_report(duplicates, config)
+    dump_json(out, report)
+    print(_status_line(report))
+    return 2
+
+
 def _evaluate(args: argparse.Namespace) -> int:
+    loaded, duplicates = _load_documents([
+        ("dataset", args.dataset),
+        ("gold", args.gold),
+        ("run", args.run),
+        ("predictions", args.predictions),
+        ("config", args.config),
+    ])
+    rejected = _reject_duplicates(duplicates, loaded, Path(args.out))
+    if rejected is not None:
+        return rejected
     report = evaluate_documents(
-        load_json(Path(args.dataset)),
+        loaded["dataset"],
         Path(args.dataset),
-        load_json(Path(args.gold)),
-        load_json(Path(args.run)),
-        load_json(Path(args.predictions)),
-        load_json(Path(args.config)),
+        loaded["gold"],
+        loaded["run"],
+        loaded["predictions"],
+        loaded["config"],
         explicit_group_draw=_split_draw(args.explicit_group_draw),
         legacy=args.legacy_diagnostic,
     )
@@ -61,15 +107,27 @@ def _evaluate(args: argparse.Namespace) -> int:
 
 
 def _compare(args: argparse.Namespace) -> int:
+    loaded, duplicates = _load_documents([
+        ("dataset", args.dataset),
+        ("gold", args.gold),
+        ("run_a", args.run_a),
+        ("predictions_a", args.predictions_a),
+        ("run_b", args.run_b),
+        ("predictions_b", args.predictions_b),
+        ("config", args.config),
+    ])
+    rejected = _reject_duplicates(duplicates, loaded, Path(args.out))
+    if rejected is not None:
+        return rejected
     report = compare_documents(
-        load_json(Path(args.dataset)),
+        loaded["dataset"],
         Path(args.dataset),
-        load_json(Path(args.gold)),
-        load_json(Path(args.run_a)),
-        load_json(Path(args.predictions_a)),
-        load_json(Path(args.run_b)),
-        load_json(Path(args.predictions_b)),
-        load_json(Path(args.config)),
+        loaded["gold"],
+        loaded["run_a"],
+        loaded["predictions_a"],
+        loaded["run_b"],
+        loaded["predictions_b"],
+        loaded["config"],
     )
     dump_json(Path(args.out), report)
     integrity = (report.get("integrity") or {}).get("status")

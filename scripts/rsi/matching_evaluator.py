@@ -60,8 +60,16 @@ GOLD_TASK_KEYS = frozenset({
     "_harness_run_id",
     "_harness_pair_id",
 })
-ANSWER_BLOCK_RE = re.compile(r"<answer\b[^>]*>([\s\S]*?)</answer>", re.IGNORECASE)
+ANSWER_TAG_RE = re.compile(r"<answer\b[^>]*>|</answer>", re.IGNORECASE)
 PAIR_KEY_RE = re.compile(r"^(0|[1-9][0-9]*)$")
+SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
+EVALUATED_VERSION_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._+-]{0,127}$")
+# Documented identity fields only. _harness_pair_id is an input-file field and is not read.
+PROFILE_IDENTITY = {
+    "canonical": {"pair": ["pair_id", "_pair_id"], "run": ["run_id", "_harness_run_id"]},
+    "standalone": {"pair": ["_pair_id", "pair_id"], "run": ["_harness_run_id", "run_id"]},
+    "api": {"pair": ["pair_id", "_pair_id"], "run": ["run_id", "_harness_run_id"]},
+}
 COST_FIELDS = (
     "tool_calls",
     "tool_cache_hits",
@@ -99,6 +107,28 @@ class PromotionRefused(EvaluatorError):
         super().__init__("promotion_refused", detail)
 
 
+class DuplicateJsonKey(Exception):
+    """A JSON object repeated a key. Raised while parsing the text, before dict collapse."""
+
+    def __init__(self, key: str):
+        super().__init__(str(key))
+        self.key = str(key)
+
+
+def _object_pairs(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    obj: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in obj:
+            raise DuplicateJsonKey(key)
+        obj[key] = value
+    return obj
+
+
+def loads_strict(text: str) -> Any:
+    """Parse JSON and reject duplicate keys, including when both values are equal."""
+    return json.loads(text, object_pairs_hook=_object_pairs)
+
+
 def canonical_json(value: Any) -> str:
     return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"), allow_nan=False)
 
@@ -112,7 +142,7 @@ def dump_json(path: Path, value: Any) -> None:
 
 
 def load_json(path: Path) -> Any:
-    return json.loads(path.read_text(encoding="utf-8"))
+    return loads_strict(Path(path).read_text(encoding="utf-8"))
 
 
 def pack_fraction(value: Fraction | None, reason: str | None = None) -> dict[str, Any]:
@@ -150,7 +180,9 @@ def _is_yes_no_text(value: Any) -> tuple[str, int | None, str | None]:
 
 def _json_object(text: str) -> tuple[dict[str, Any] | None, str | None]:
     try:
-        loaded = json.loads(text)
+        loaded = loads_strict(text)
+    except DuplicateJsonKey:
+        return None, "duplicate_json_key"
     except json.JSONDecodeError:
         return None, "parse_error"
     if not isinstance(loaded, dict):
@@ -158,8 +190,41 @@ def _json_object(text: str) -> tuple[dict[str, Any] | None, str | None]:
     return loaded, None
 
 
-def _answer_blocks(text: str) -> list[str]:
-    return [match.group(1).strip() for match in ANSWER_BLOCK_RE.finditer(text)]
+def _answer_structure(text: str) -> tuple[str | None, str | None]:
+    """Return the inner text of the one complete answer block.
+
+    A missing answer tag is ``(None, None)``. A second block, a nested block,
+    or an unclosed block after a complete one is an error. The first complete
+    block is not used when another answer structure is present.
+    """
+    tags = list(ANSWER_TAG_RE.finditer(text))
+    if not tags:
+        if re.search(r"<answer\b", text, re.IGNORECASE):
+            return None, "parse_error"
+        return None, None
+    depth = 0
+    blocks: list[str] = []
+    open_end: int | None = None
+    for match in tags:
+        is_close = match.group(0).lower().startswith("</")
+        if not is_close:
+            if depth != 0:
+                return None, "multiple_answers"
+            depth = 1
+            open_end = match.end()
+            continue
+        if depth != 1 or open_end is None:
+            return None, "parse_error"
+        blocks.append(text[open_end:match.start()].strip())
+        depth = 0
+        open_end = None
+    if depth != 0:
+        return None, "multiple_answers" if blocks else "parse_error"
+    if len(blocks) != 1:
+        return None, "multiple_answers"
+    if re.search(r"<answer\b", text[tags[-1].end():], re.IGNORECASE):
+        return None, "multiple_answers"
+    return blocks[0], None
 
 
 def _object_final(obj: Mapping[str, Any]) -> tuple[str, int | None, str | None]:
@@ -172,8 +237,8 @@ def parse_answer_container(value: Any) -> tuple[str, int | None, str | None]:
     """Parse one explicit answer container.
 
     A dict, a complete JSON object string, or one complete answer block is
-    accepted. Truncated JSON, a second answer block, and prose Yes/No are not
-    repaired or searched.
+    accepted. Duplicate JSON keys, truncated JSON, an unclosed extra answer
+    block, and prose Yes/No are not repaired or searched.
     """
     if isinstance(value, dict):
         return _object_final(value)
@@ -187,16 +252,14 @@ def parse_answer_container(value: Any) -> tuple[str, int | None, str | None]:
         if obj is None:
             return "invalid", None, reason or "parse_error"
         return _object_final(obj)
-    blocks = _answer_blocks(stripped)
-    if len(blocks) > 1:
-        return "invalid", None, "multiple_answers"
-    if len(blocks) == 1:
-        obj, reason = _json_object(blocks[0])
+    inner, error = _answer_structure(stripped)
+    if error:
+        return "invalid", None, error
+    if inner is not None:
+        obj, reason = _json_object(inner)
         if obj is None:
-            return "invalid", None, "parse_error" if reason == "parse_error" else "unsupported_format"
+            return "invalid", None, reason or "parse_error"
         return _object_final(obj)
-    if "<answer" in stripped.casefold() or stripped.startswith("{"):
-        return "invalid", None, "parse_error"
     return "invalid", None, "unsupported_format"
 
 
@@ -394,7 +457,9 @@ def _load_task(record: Mapping[str, Any], manifest_path: Path) -> tuple[Mapping[
             f"{record.get('record_id')}: task_ref bytes hash {file_hash} != {ref['sha256']}",
         )]
     try:
-        task = json.loads(raw.decode("utf-8"))
+        task = loads_strict(raw.decode("utf-8"))
+    except DuplicateJsonKey as exc:
+        return None, [_error("duplicate_json_key", f"{record.get('record_id')}: task_ref key {exc.key!r}")]
     except (UnicodeError, json.JSONDecodeError) as exc:
         return None, [_error("illegal_task", f"{record.get('record_id')}: {exc}")]
     if not isinstance(task, dict):
@@ -625,21 +690,93 @@ def load_config(config: Mapping[str, Any]) -> dict[str, Any]:
     }
 
 
-def _prediction_identity(row: Mapping[str, Any], envelope_run: str | None) -> tuple[str | None, str | None, str | None, list[dict[str, str]]]:
+def _run_key(value: Any) -> str | None:
+    if isinstance(value, str) and value and value == value.strip():
+        return value
+    return None
+
+
+def _alias_state(
+    row: Mapping[str, Any],
+    keys: Sequence[str],
+    parse,
+    illegal_code: str,
+    conflict_code: str,
+) -> tuple[str, Any, list[dict[str, str]]]:
+    """Validate every present alias. A legal alias does not hide an illegal or different one."""
+    present = [key for key in keys if key in row]
+    if not present:
+        return "missing", None, []
     errors = []
-    run_id = row.get("run_id", envelope_run)
-    if not isinstance(run_id, str) or not run_id:
-        errors.append(_error("unbound_run_id", "prediction has no run_id"))
+    values = []
+    for key in present:
+        parsed = parse(row[key])
+        if parsed is None:
+            errors.append(_error(illegal_code, f"{key}={row[key]!r}"))
+        else:
+            values.append(parsed)
+    if errors:
+        return "illegal", None, errors
+    if len(set(values)) != 1:
+        detail = ", ".join(f"{key}={row[key]!r}" for key in present)
+        return "conflict", None, [_error(conflict_code, detail)]
+    return "ok", values[0], []
+
+
+def _prediction_identity(
+    row: Mapping[str, Any],
+    envelope: Mapping[str, Any],
+    profile: str,
+) -> tuple[str | None, str | None, str | None, list[dict[str, str]]]:
+    spec = PROFILE_IDENTITY[profile]
+    pair_state, pair_id, pair_errors = _alias_state(
+        row, spec["pair"], _pair_key, "illegal_pair_id", "pair_id_conflict",
+    )
+    run_state, run_value, run_errors = _alias_state(
+        row, spec["run"], _run_key, "illegal_run_id", "run_id_conflict",
+    )
+    errors = [*pair_errors, *run_errors]
+    if pair_state == "missing":
+        errors.append(_error("unbound_pair_id", "no documented pair id field"))
+        pair_id = None
+    if run_state == "ok":
+        run_id = run_value
+        if envelope.get("state") == "present" and envelope.get("run_id") != run_id:
+            errors.append(_error("run_id_conflict", f"envelope run_id={envelope.get('run_id')!r} != {run_id!r}"))
+            run_id = None
+        elif envelope.get("state") == "illegal":
+            run_id = None
+    elif run_state == "missing":
+        if envelope.get("state") == "present":
+            run_id = envelope.get("run_id")
+        else:
+            if envelope.get("state") != "illegal":
+                errors.append(_error("unbound_run_id", "prediction has no run_id"))
+            run_id = None
+    else:
         run_id = None
-    pair_id = _pair_key(row.get("pair_id", row.get("_pair_id")))
-    if pair_id is None:
-        errors.append(_error("unbound_pair_id", f"pair_id {row.get('pair_id', row.get('_pair_id'))!r}"))
-    record_id = row.get("record_id")
-    if record_id is not None:
-        record_id = _record_id(record_id)
-        if record_id is None:
+    stated = None
+    if "record_id" in row:
+        stated = _record_id(row.get("record_id"))
+        if stated is None:
             errors.append(_error("schema_mismatch", "prediction record_id is not a stable string"))
-    return run_id, pair_id, record_id, errors
+    return run_id, pair_id, stated, errors
+
+
+def _observed_hash(row: Mapping[str, Any]) -> tuple[str, str | None, list[dict[str, str]]]:
+    """Return availability, hash, and errors.
+
+    A missing key and an explicit null are unknown. They are not replaced by
+    the manifest task hash. ``False`` and numbers are illegal, not missing.
+    """
+    if "observed_task_sha256" not in row:
+        return "not_recorded", None, []
+    value = row.get("observed_task_sha256")
+    if value is None:
+        return "unknown", None, []
+    if isinstance(value, str) and SHA256_RE.fullmatch(value):
+        return "recorded", value, []
+    return "illegal", None, [_error("illegal_observed_task_hash", f"observed_task_sha256={value!r}")]
 
 
 def _residual_gold(row: Mapping[str, Any], gold: int) -> list[dict[str, str]]:
@@ -737,19 +874,20 @@ def parse_prediction_row(row: Mapping[str, Any], profile: str) -> dict[str, Any]
     else:
         parsed = parse_canonical_terminal(row.get("terminal"))
     parsed["cost"] = _row_cost(row)
-    if isinstance(row.get("observed_task_sha256"), str):
-        parsed["observed_task_sha256"] = row["observed_task_sha256"]
-    else:
-        parsed["observed_task_sha256"] = None
+    availability, observed, observed_errors = _observed_hash(row)
+    parsed["observed_task_sha256"] = observed
+    parsed["observed_task_availability"] = availability
+    parsed["observed_task_errors"] = observed_errors
     return parsed
 
 
-def _envelope(document: Any) -> tuple[str | None, str | None, list[Any], list[dict[str, str]]]:
+def _envelope(document: Any) -> tuple[str | None, dict[str, Any], list[Any], list[dict[str, str]]]:
     errors: list[dict[str, str]] = []
+    absent = {"state": "absent", "run_id": None}
     if isinstance(document, list):
-        return None, None, document, [_error("profile_missing", "prediction document has no profile")]
+        return None, absent, document, [_error("profile_missing", "prediction document has no profile")]
     if not isinstance(document, dict):
-        return None, None, [], [_error("schema_mismatch", "predictions are not an object")]
+        return None, absent, [], [_error("schema_mismatch", "predictions are not an object")]
     profile = document.get("profile")
     if profile not in PROFILES:
         errors.append(_error("profile_unsupported" if profile is not None else "profile_missing", str(profile)))
@@ -757,11 +895,16 @@ def _envelope(document: Any) -> tuple[str | None, str | None, list[Any], list[di
     if not isinstance(rows, list):
         errors.append(_error("schema_mismatch", "predictions is not a list"))
         rows = []
-    run_id = document.get("run_id")
-    if run_id is not None and not isinstance(run_id, str):
-        errors.append(_error("unbound_run_id", "envelope run_id is not a string"))
-        run_id = None
-    return profile if isinstance(profile, str) else None, run_id, rows, errors
+    if "run_id" not in document:
+        envelope = absent
+    else:
+        raw = document.get("run_id")
+        if isinstance(raw, str) and raw and raw == raw.strip():
+            envelope = {"state": "present", "run_id": raw}
+        else:
+            errors.append(_error("illegal_run_id", f"envelope run_id={raw!r}"))
+            envelope = {"state": "illegal", "run_id": None}
+    return profile if isinstance(profile, str) else None, envelope, rows, errors
 
 
 def align_predictions(
@@ -783,7 +926,7 @@ def align_predictions(
         errors.append(_error("run_dataset_hash_mismatch", "run dataset hash does not match the dataset manifest"))
     if run_manifest.get("evaluator_version") != EVALUATOR_VERSION:
         errors.append(_error("evaluator_version_mismatch", str(run_manifest.get("evaluator_version"))))
-    profile, envelope_run, rows, envelope_errors = _envelope(document)
+    profile, envelope, rows, envelope_errors = _envelope(document)
     errors.extend(envelope_errors)
     if legacy:
         if profile != LEGACY_PROFILE:
@@ -805,10 +948,17 @@ def align_predictions(
                 errors.append(_error("schema_mismatch", f"legacy row {record['record_id']} is not an object"))
                 continue
             parsed = parse_prediction_row(prediction, "canonical")
+            errors.extend(parsed.get("observed_task_errors") or [])
             aligned.append({**record, **parsed, "pair_id": None, "run_id": run_id, "pairing_verified": False})
         if errors:
             return None, None, errors
-        return aligned, {"profile": LEGACY_PROFILE, "pairing_verified": False, "file_order_record_ids": file_order}, []
+        return aligned, {
+            "profile": LEGACY_PROFILE,
+            "pairing_verified": False,
+            "identity_verified": False,
+            "file_order_record_ids": file_order,
+            "prediction_schema_version": document.get("schema_version") if isinstance(document, dict) else None,
+        }, []
     pair_map_raw = run_manifest.get("pair_to_record")
     pair_map: dict[str, str] = {}
     if not isinstance(pair_map_raw, dict):
@@ -835,14 +985,23 @@ def align_predictions(
     aligned = []
     seen_records: set[str] = set()
     seen_pairs: set[str] = set()
+    unlocated_identity_rows = 0
     for prediction in rows:
         if not isinstance(prediction, dict):
             errors.append(_error("schema_mismatch", "prediction is not an object"))
             continue
-        row_run, pair_id, stated_record, identity_errors = _prediction_identity(prediction, envelope_run if isinstance(envelope_run, str) else None)
+        row_run, pair_id, stated_record, identity_errors = _prediction_identity(prediction, envelope, profile or "")
         errors.extend(identity_errors)
         if row_run is not None and row_run != run_id:
             errors.append(_error("mixed_run_id", f"{row_run} != {run_id}"))
+            identity_errors = [*identity_errors, _error("mixed_run_id", f"{row_run} != {run_id}")]
+        if identity_errors:
+            if pair_id is not None and pair_id in pair_map and pair_id not in seen_pairs:
+                seen_pairs.add(pair_id)
+                seen_records.add(pair_map[pair_id])
+            else:
+                unlocated_identity_rows += 1
+            continue
         if pair_id is None:
             continue
         if pair_id in seen_pairs:
@@ -863,6 +1022,7 @@ def align_predictions(
         record = by_id[mapped]
         errors.extend(_residual_gold(prediction, record["gold_label"]))
         parsed = parse_prediction_row(prediction, profile or "")
+        errors.extend(parsed.get("observed_task_errors") or [])
         observed = parsed.get("observed_task_sha256")
         if observed is not None and observed != record["task_sha256"]:
             errors.append(_error("observed_task_hash_mismatch", f"{mapped}: observation does not match the manifest task hash"))
@@ -873,11 +1033,19 @@ def align_predictions(
             "run_id": run_id,
             "pairing_verified": True,
         })
-    for record_id in sorted(set(by_id) - seen_records):
-        errors.append(_error("missing_prediction", record_id))
+    missing_records = sorted(set(by_id) - seen_records)
+    if len(missing_records) > unlocated_identity_rows:
+        for record_id in missing_records:
+            errors.append(_error("missing_prediction", record_id))
     if errors:
         return None, None, errors
-    return aligned, {"profile": profile, "pairing_verified": True, "run_id": run_id}, []
+    return aligned, {
+        "profile": profile,
+        "pairing_verified": True,
+        "identity_verified": True,
+        "run_id": run_id,
+        "prediction_schema_version": document.get("schema_version") if isinstance(document, dict) else None,
+    }, []
 
 
 def _label_counts(rows: Sequence[Mapping[str, Any]]) -> dict[int, dict[str, int]]:
@@ -1211,6 +1379,68 @@ def bootstrap_metric(
     }
 
 
+def check_run_contract(
+    run_manifest: Mapping[str, Any],
+    config: Mapping[str, Any],
+    gold_sha: str,
+    predictions: Any,
+    *,
+    legacy: bool,
+) -> list[dict[str, str]]:
+    """Bindings shared by evaluate and compare. Neither entry point may skip these."""
+    errors: list[dict[str, str]] = []
+    evaluated = run_manifest.get("evaluated_version")
+    if "evaluated_version" not in run_manifest or evaluated in (None, ""):
+        errors.append(_error("evaluated_version_missing", "evaluated_version is required"))
+    elif not isinstance(evaluated, str) or EVALUATED_VERSION_RE.fullmatch(evaluated) is None:
+        errors.append(_error("evaluated_version_invalid", repr(evaluated)))
+    if "config_sha256" not in run_manifest:
+        errors.append(_error("config_hash_missing", "run manifest config_sha256 is required"))
+    elif not isinstance(run_manifest.get("config_sha256"), str) or SHA256_RE.fullmatch(run_manifest["config_sha256"]) is None:
+        errors.append(_error("config_hash_invalid", repr(run_manifest.get("config_sha256"))))
+    elif run_manifest["config_sha256"] != config["content_sha256"]:
+        errors.append(_error("config_hash_mismatch", "run manifest config hash does not match the loaded config"))
+    stated_gold = run_manifest.get("gold_sidecar_sha256")
+    if not isinstance(stated_gold, str) or SHA256_RE.fullmatch(stated_gold) is None or stated_gold != gold_sha:
+        errors.append(_error("gold_hash_mismatch", "run manifest gold hash does not match the sidecar"))
+    if not isinstance(predictions, dict):
+        errors.append(_error("schema_mismatch", "predictions are not an object"))
+    elif "schema_version" not in predictions:
+        if not legacy:
+            errors.append(_error("prediction_schema_missing", "prediction schema_version is required"))
+    elif predictions.get("schema_version") != PREDICTION_SCHEMA:
+        errors.append(_error("prediction_schema_rejected", repr(predictions.get("schema_version"))))
+    return errors
+
+
+def _run_binding(
+    run_manifest: Mapping[str, Any],
+    meta: Mapping[str, Any],
+    *,
+    dataset_hash: str,
+    gold_sha: str,
+    config_sha: str,
+) -> dict[str, Any]:
+    profile = meta.get("profile")
+    return {
+        "run_id": run_manifest.get("run_id"),
+        "evaluated_version": run_manifest.get("evaluated_version"),
+        "dataset_id": run_manifest.get("dataset_id"),
+        "dataset_content_sha256": dataset_hash,
+        "gold_sidecar_sha256": gold_sha,
+        "config_sha256": config_sha,
+        "manifest_config_sha256": run_manifest.get("config_sha256"),
+        "evaluator_version": EVALUATOR_VERSION,
+        "prediction_schema_version": meta.get("prediction_schema_version"),
+        "profile": profile,
+        "pairing_verified": bool(meta.get("pairing_verified")),
+        "identity_verified": bool(meta.get("identity_verified")),
+        "identity_fields": PROFILE_IDENTITY.get(profile),
+        "task_schema_version": TASK_SCHEMA_VERSION,
+        "source_group_definition": {"id": SOURCE_GROUP_ID, "version": SOURCE_GROUP_VERSION},
+    }
+
+
 def _promotion_block() -> dict[str, Any]:
     return {
         "enabled": False,
@@ -1231,6 +1461,7 @@ def _row_audit(rows: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
             "task_sha256": row["task_sha256"],
             "task_hash_source": row["task_hash_source"],
             "model_observed_task_sha256": row.get("observed_task_sha256"),
+            "observed_task_availability": row.get("observed_task_availability"),
             "model_observation_compared": row.get("observed_task_sha256") is not None,
             "prediction_status": "valid" if row["valid"] else "invalid",
             "pred_label": row.get("pred_label"),
@@ -1315,6 +1546,13 @@ def evaluate_aligned(
         "integrity": {"status": "passed" if formal else "failed", "errors": []},
         "pairing_verified": formal,
         "config_sha256": config["content_sha256"],
+        "run_binding": _run_binding(
+            run_manifest,
+            meta,
+            dataset_hash=dataset["content_sha256"],
+            gold_sha=gold_sha256,
+            config_sha=config["content_sha256"],
+        ),
         "promotion": _promotion_block(),
         "example_status": config.get("example_status"),
         "input_hash_policy": "A manifest task hash describes the evaluation task. It is not copied into model_observed_task_sha256.",
@@ -1333,20 +1571,15 @@ def evaluate_documents(
     legacy: bool = False,
 ) -> dict[str, Any]:
     config = load_config(config_document)
-    if isinstance(run_manifest.get("config_sha256"), str) and run_manifest["config_sha256"] != config["content_sha256"]:
-        return _failed_report([_error("config_hash_mismatch", "run manifest config hash does not match the loaded config")], config)
     dataset, errors = prepare_dataset(dataset_manifest, dataset_path)
     if dataset is None:
         return _failed_report(errors, config)
     gold_sha, gold_errors = check_gold_sidecar(gold_sidecar, dataset)
     if gold_sha is None:
         return _failed_report(gold_errors, config, dataset_hash=dataset["content_sha256"])
-    if run_manifest.get("gold_sidecar_sha256") != gold_sha:
-        return _failed_report(
-            [_error("gold_hash_mismatch", "run manifest gold hash does not match the sidecar")],
-            config,
-            dataset_hash=dataset["content_sha256"],
-        )
+    contract_errors = check_run_contract(run_manifest, config, gold_sha, predictions, legacy=legacy)
+    if contract_errors:
+        return _failed_report(contract_errors, config, dataset_hash=dataset["content_sha256"])
     aligned, meta, align_errors = align_predictions(dataset, run_manifest, predictions, legacy=legacy)
     if aligned is None or meta is None:
         return _failed_report(align_errors, config, dataset_hash=dataset["content_sha256"])
@@ -1531,6 +1764,7 @@ def compare_aligned(
         "promotion": _promotion_block(),
         "conclusion": "comparison_only_promotion_disabled",
         "example_status": config.get("example_status"),
+        "config_sha256": config["content_sha256"],
     }
 
 
@@ -1551,12 +1785,29 @@ def compare_documents(
     gold_sha, gold_errors = check_gold_sidecar(gold_sidecar, dataset)
     if gold_sha is None:
         return _failed_report(gold_errors, config, dataset_hash=dataset["content_sha256"])
+    contract_errors = [
+        {"code": item["code"], "detail": f"run A: {item['detail']}"}
+        for item in check_run_contract(run_a, config, gold_sha, predictions_a, legacy=False)
+    ]
+    contract_errors.extend(
+        {"code": item["code"], "detail": f"run B: {item['detail']}"}
+        for item in check_run_contract(run_b, config, gold_sha, predictions_b, legacy=False)
+    )
+    if contract_errors:
+        return _failed_report(contract_errors, config, dataset_hash=dataset["content_sha256"])
     aligned_a, meta_a, errors_a = align_predictions(dataset, run_a, predictions_a, legacy=False)
     aligned_b, meta_b, errors_b = align_predictions(dataset, run_b, predictions_b, legacy=False)
     if aligned_a is None or meta_a is None or not meta_a.get("pairing_verified"):
         return _failed_report(errors_a or [_error("legacy_not_formal", "run A")], config, dataset_hash=dataset["content_sha256"])
     if aligned_b is None or meta_b is None or not meta_b.get("pairing_verified"):
         return _failed_report(errors_b or [_error("legacy_not_formal", "run B")], config, dataset_hash=dataset["content_sha256"])
-    if run_a.get("gold_sidecar_sha256") != gold_sha or run_b.get("gold_sidecar_sha256") != gold_sha:
-        return _failed_report([_error("gold_hash_mismatch", "run gold hash does not match the sidecar")], config, dataset_hash=dataset["content_sha256"])
-    return compare_aligned(aligned_a, aligned_b, dataset, config, run_a, run_b)
+    report = compare_aligned(aligned_a, aligned_b, dataset, config, run_a, run_b)
+    report["task_schema_version"] = TASK_SCHEMA_VERSION
+    report["source_group_definition"] = {"id": SOURCE_GROUP_ID, "version": SOURCE_GROUP_VERSION}
+    report["gold_sidecar_sha256"] = gold_sha
+    report["dataset_content_sha256"] = dataset["content_sha256"]
+    report["run_binding"] = {
+        "A": _run_binding(run_a, meta_a, dataset_hash=dataset["content_sha256"], gold_sha=gold_sha, config_sha=config["content_sha256"]),
+        "B": _run_binding(run_b, meta_b, dataset_hash=dataset["content_sha256"], gold_sha=gold_sha, config_sha=config["content_sha256"]),
+    }
+    return report
